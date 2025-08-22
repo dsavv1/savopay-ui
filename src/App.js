@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
 
+// ===== Build tag (helps confirm you’re on the latest UI) =====
+const BUILD_TAG = "UI build: 2025-08-22 11:05";
+
 // Change this if your backend runs elsewhere
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
@@ -11,11 +14,16 @@ export default function App() {
   const [customerEmail, setCustomerEmail] = useState("");
 
   const [starting, setStarting] = useState(false);
-  const [startResult, setStartResult] = useState(null); // parsed StartPayment JSON
+  const [startResult, setStartResult] = useState(null);
   const [error, setError] = useState("");
 
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
+
+  // Inline email UI state
+  const [emailTargetId, setEmailTargetId] = useState(null);
+  const [emailAddress, setEmailAddress] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Fetch recent payments (poll every 5s)
   async function fetchPayments() {
@@ -25,7 +33,7 @@ export default function App() {
       const data = await r.json();
       setPayments(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error(e);
+      console.error("fetchPayments error:", e);
     } finally {
       setLoadingPayments(false);
     }
@@ -71,35 +79,66 @@ export default function App() {
       }
 
       setStartResult(json);
-      // refresh payments list so the new row shows up
       fetchPayments();
     } catch (e) {
-      console.error(e);
+      console.error("handleStartPayment error:", e);
       setError(String(e.message || e));
     } finally {
       setStarting(false);
     }
   }
 
-  // Manual (re)send receipt
-  async function emailReceipt(paymentId, fallbackEmail) {
-    const to = window.prompt(
-      "Send receipt to which email?",
-      fallbackEmail || customerEmail || "you@example.com"
-    );
-    if (!to) return;
+  // Open inline email form for a specific payment
+  function openEmailForm(row) {
+    console.log("Email receipt clicked for", row.payment_id);
+    setEmailTargetId(row.payment_id);
+    setEmailAddress(row.customer_email || customerEmail || "");
+  }
+
+  function cancelEmailForm() {
+    console.log("Email form canceled");
+    setEmailTargetId(null);
+    setEmailAddress("");
+  }
+
+  // Send receipt via backend
+  async function sendEmail() {
+    if (!emailTargetId) return;
+    if (!emailAddress.trim()) {
+      alert("Please enter an email address.");
+      return;
+    }
     try {
-      const r = await fetch(`${API_BASE}/payments/${paymentId}/email`, {
+      setSendingEmail(true);
+      console.log("Sending email for", emailTargetId, "to", emailAddress);
+      const r = await fetch(`${API_BASE}/payments/${emailTargetId}/email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to_email: to }),
+        body: JSON.stringify({ to_email: emailAddress.trim() }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || "Failed to send");
-      alert(`Receipt sent to ${to}`);
+      alert(`Receipt sent to ${emailAddress.trim()}`);
+      cancelEmailForm();
     } catch (e) {
-      console.error(e);
+      console.error("sendEmail error:", e);
       alert(`Failed to send: ${e.message || e}`);
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
+  // Re-check payment status via backend
+  async function recheck(paymentId) {
+    try {
+      const r = await fetch(`${API_BASE}/payments/${paymentId}/recheck`, { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || "Failed to re-check");
+      alert(`Status: ${data.state || "unknown"}${data.confirmed ? " (confirmed)" : ""}`);
+      fetchPayments();
+    } catch (e) {
+      console.error("recheck error:", e);
+      alert(`Re-check failed: ${e.message || e}`);
     }
   }
 
@@ -111,6 +150,7 @@ export default function App() {
   return (
     <div style={styles.wrap}>
       <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
+      <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>{BUILD_TAG}</div>
 
       <form onSubmit={handleStartPayment} style={styles.card}>
         <div style={styles.row}>
@@ -135,7 +175,6 @@ export default function App() {
           >
             <option value="USD">USD</option>
             <option value="EUR">EUR</option>
-            {/* Add more if needed */}
           </select>
         </div>
 
@@ -147,7 +186,6 @@ export default function App() {
             onChange={(e) => setCryptoCurrency(e.target.value)}
           >
             <option value="USDT">USDT (ERC20)</option>
-            {/* Add more if your ForumPay account supports them */}
           </select>
         </div>
 
@@ -230,43 +268,86 @@ export default function App() {
                 </tr>
               )}
               {payments.map((row) => (
-                <tr key={row.payment_id || row.created_at}>
-                  <td>{row.created_at}</td>
-                  <td>{row.order_id || "—"}</td>
-                  <td>
-                    {row.invoice_amount} {row.invoice_currency}
-                  </td>
-                  <td>
-                    {(row.crypto_amount || "—")} {row.currency}
-                  </td>
-                  <td>{row.state || row.status}</td>
-                  <td>{row.customer_email || "—"}</td>
-                  <td>
-                    <button
-                      onClick={() => emailReceipt(row.payment_id, row.customer_email)}
-                      disabled={!row?.payment_id || row?.state !== "confirmed"}
-                      title={
-                        !row?.payment_id || row?.state !== "confirmed"
-                          ? "Available after confirmation"
-                          : "Send receipt"
-                      }
-                      style={styles.smallBtn}
-                    >
-                      Email receipt
-                    </button>
-                    {" "}
-                    {row?.payment_id && (
-                      <a
-                        href={`${API_BASE}/receipt/${row.payment_id}/print`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={styles.linkBtn}
+                <React.Fragment key={row.payment_id || row.created_at || Math.random()}>
+                  <tr>
+                    <td>{row.created_at || "—"}</td>
+                    <td>{row.order_id || "—"}</td>
+                    <td>
+                      {row.invoice_amount ? `${row.invoice_amount} ${row.invoice_currency}` : "—"}
+                    </td>
+                    <td>
+                      {row.crypto_amount ? `${row.crypto_amount} ${row.currency}` : "—"}
+                    </td>
+                    <td>{row.state || row.status || "—"}</td>
+                    <td>{row.customer_email || "—"}</td>
+                    <td>
+                      <button
+                        onClick={() => openEmailForm(row)}
+                        disabled={!row?.payment_id}
+                        title="Send receipt"
+                        style={styles.smallBtn}
+                        data-testid="email-btn"
                       >
-                        Print
-                      </a>
-                    )}
-                  </td>
-                </tr>
+                        Email receipt
+                      </button>
+                      {" "}
+                      {row?.payment_id && (
+                        <a
+                          href={`${API_BASE}/receipt/${row.payment_id}/print`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={styles.linkBtn}
+                        >
+                          Print
+                        </a>
+                      )}
+                      {" "}
+                      <button
+                        onClick={() => recheck(row.payment_id)}
+                        disabled={!row?.payment_id}
+                        style={styles.smallBtn}
+                        title="Re-check status with ForumPay"
+                        data-testid="recheck-btn"
+                      >
+                        Re-check
+                      </button>
+                    </td>
+                  </tr>
+
+                  {emailTargetId === row.payment_id && (
+                    <tr>
+                      <td colSpan={7}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <input
+                            style={{ ...styles.input, maxWidth: 360 }}
+                            type="email"
+                            placeholder="name@example.com"
+                            value={emailAddress}
+                            onChange={(e) => setEmailAddress(e.target.value)}
+                            data-testid="email-input"
+                          />
+                          <button
+                            type="button"
+                            onClick={sendEmail}
+                            disabled={sendingEmail || !emailAddress.trim()}
+                            style={styles.smallBtn}
+                            data-testid="email-send"
+                          >
+                            {sendingEmail ? "Sending..." : "Send"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEmailForm}
+                            style={styles.secondaryBtn}
+                            data-testid="email-cancel"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -310,7 +391,7 @@ export default function App() {
 
 const styles = {
   wrap: { maxWidth: 920, margin: "24px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial" },
-  h1: { margin: "0 0 16px 0", fontSize: 28 },
+  h1: { margin: "0 0 8px 0", fontSize: 28 },
   h2: { margin: "0", fontSize: 20 },
   card: { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, marginBottom: 16, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
   row: { display: "flex", gap: 12, alignItems: "center", marginBottom: 12 },
