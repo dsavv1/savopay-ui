@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-27 16:45";
+const BUILD_TAG = "UI build: 2025-08-27 17:22";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -202,7 +202,7 @@ export default function App() {
                   onClick={() => setTipPct(p)}
                   style={{
                     ...styles.segmentBtn,
-                    ...(tipPct === p ? styles.segmentBtnActive : null)
+                    ...(tipPct === p ? styles.segmentBtnActive : {})
                   }}
                 >
                   {p}%
@@ -317,6 +317,8 @@ export default function App() {
                 <th>Fiat</th>
                 <th>Crypto</th>
                 <th>Status</th>
+                <th>Cashier</th>
+                <th>Tip</th>
                 <th>Customer email</th>
                 <th>Actions</th>
               </tr>
@@ -324,7 +326,7 @@ export default function App() {
             <tbody>
               {payments.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: "center", color: "#666" }}>
+                  <td colSpan={9} style={{ textAlign: "center", color: "#666" }}>
                     No payments yet.
                   </td>
                 </tr>
@@ -332,32 +334,26 @@ export default function App() {
               {payments.map((row) => {
                 const state = String(row.state || row.status || "").toLowerCase();
                 const isConfirmed = state === "confirmed";
+                const tipText = fixed2(row.meta_tip_amount)
+                  ? `${fixed2(row.meta_tip_amount)} ${row.invoice_currency}${row.meta_tip_percent != null ? ` (${row.meta_tip_percent}%)` : ""}`
+                  : "—";
+
                 return (
                   <React.Fragment key={row.payment_id || row.created_at || Math.random()}>
                     <tr>
                       <td>{row.created_at || "—"}</td>
                       <td>{row.order_id || "—"}</td>
-                      <td>
-                        {row.invoice_amount ? `${row.invoice_amount} ${row.invoice_currency}` : "—"}
-                      </td>
-                      <td>
-                        {row.crypto_amount ? `${row.crypto_amount} ${row.currency}` : "—"}
-                      </td>
-                      <td>
-                        <StatusPill status={row.state || row.status || "—"} />
-                      </td>
+                      <td>{row.invoice_amount ? `${row.invoice_amount} ${row.invoice_currency}` : "—"}</td>
+                      <td>{row.crypto_amount ? `${row.crypto_amount} ${row.currency}` : "—"}</td>
+                      <td><StatusPill status={row.state || row.status || "—"} /></td>
+                      <td>{row.meta_cashier || "—"}</td>
+                      <td>{tipText}</td>
                       <td>{row.customer_email || "—"}</td>
                       <td>
                         <button
                           onClick={() => openEmailForm(row)}
                           disabled={!row?.payment_id || !isConfirmed}
-                          title={
-                            !row?.payment_id
-                              ? "Unavailable"
-                              : !isConfirmed
-                              ? "Available after confirmation"
-                              : "Send receipt"
-                          }
+                          title={!row?.payment_id ? "Unavailable" : !isConfirmed ? "Available after confirmation" : "Send receipt"}
                           style={styles.smallBtn}
                           data-testid="email-btn"
                         >
@@ -366,9 +362,9 @@ export default function App() {
                         {" "}
                         {row?.payment_id && (
                           <a
-                            href={`${API_BASE}/receipt/${row.payment_id}/print`}
+                            href={`${API_BASE}/receipt/${encodeURIComponent(row.payment_id)}/print`}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noreferrer noopener"
                             style={styles.linkBtn}
                           >
                             Print
@@ -389,7 +385,7 @@ export default function App() {
 
                     {emailTargetId === row.payment_id && (
                       <tr>
-                        <td colSpan={7}>
+                        <td colSpan={9}>
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             <input
                               style={{ ...styles.input, maxWidth: 360 }}
@@ -473,6 +469,10 @@ function round2(n) {
 function fmt(n, ccy) {
   const s = Number.isFinite(n) ? n.toFixed(2) : "0.00";
   return `${s} ${ccy}`;
+}
+function fixed2(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(2) : null;
 }
 
 const styles = {
