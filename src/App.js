@@ -1,6 +1,6 @@
-// src/App.js
 import React, { useEffect, useState } from "react";
 import StatusPill from "./components/StatusPill";
+import AdminPanel from "./components/AdminPanel";
 
 // Build tag so we can verify the UI is fresh after deploy
 const BUILD_TAG = "UI build: 2025-08-22 14:10";
@@ -9,6 +9,8 @@ const BUILD_TAG = "UI build: 2025-08-22 14:10";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
+  const [view, setView] = useState("pos"); // "pos" | "admin"
+
   const [amount, setAmount] = useState("25.00");
   const [invoiceCurrency, setInvoiceCurrency] = useState("USD");
   const [cryptoCurrency, setCryptoCurrency] = useState("USDT");
@@ -27,7 +29,6 @@ export default function App() {
   const [emailAddress, setEmailAddress] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  // Fetch recent payments (poll every 5s)
   async function fetchPayments() {
     try {
       setLoadingPayments(true);
@@ -47,7 +48,6 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  // Start a sandbox payment via backend
   async function handleStartPayment(e) {
     e.preventDefault();
     setError("");
@@ -92,7 +92,6 @@ export default function App() {
     }
   }
 
-  // Open inline email form for a specific (confirmed) payment
   function openEmailForm(row) {
     setEmailTargetId(row.payment_id);
     setEmailAddress(row.customer_email || customerEmail || "");
@@ -103,7 +102,6 @@ export default function App() {
     setEmailAddress("");
   }
 
-  // Send receipt via backend
   async function sendEmail() {
     if (!emailTargetId) return;
     if (!emailAddress.trim()) {
@@ -144,7 +142,6 @@ export default function App() {
     }
   }
 
-  // Re-check payment status via backend
   async function recheck(paymentId) {
     try {
       const r = await fetch(`${API_BASE}/payments/${paymentId}/recheck`, {
@@ -171,319 +168,340 @@ export default function App() {
 
   return (
     <div style={styles.wrap}>
-      <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
-      <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>
-        {BUILD_TAG}
-      </div>
-
-      <form onSubmit={handleStartPayment} style={styles.card}>
-        <div style={styles.row}>
-          <label style={styles.label}>Amount</label>
-          <input
-            style={styles.input}
-            type="number"
-            step="0.01"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-          />
-        </div>
-
-        <div style={styles.row}>
-          <label style={styles.label}>Fiat currency</label>
-          <select
-            style={styles.input}
-            value={invoiceCurrency}
-            onChange={(e) => setInvoiceCurrency(e.target.value)}
-          >
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-          </select>
-        </div>
-
-        <div style={styles.row}>
-          <label style={styles.label}>Crypto to receive</label>
-          <select
-            style={styles.input}
-            value={cryptoCurrency}
-            onChange={(e) => setCryptoCurrency(e.target.value)}
-          >
-            <option value="USDT">USDT (ERC20)</option>
-          </select>
-        </div>
-
-        <div style={styles.row}>
-          <label style={styles.label}>Payer ID</label>
-          <input
-            style={styles.input}
-            type="text"
-            value={payerId}
-            onChange={(e) => setPayerId(e.target.value)}
-            placeholder="walk-in"
-          />
-        </div>
-
-        <div style={styles.row}>
-          <label style={styles.label}>Customer email (optional)</label>
-          <input
-            style={styles.input}
-            type="email"
-            value={customerEmail}
-            onChange={(e) => setCustomerEmail(e.target.value)}
-            placeholder="you@example.com"
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button type="submit" style={styles.primaryBtn} disabled={starting}>
-            {starting ? "Creating..." : "Charge"}
-          </button>
-
-          {startResult?.access_url && (
-            <button
-              type="button"
-              style={styles.secondaryBtn}
-              onClick={openCheckout}
-            >
-              Open checkout
-            </button>
-          )}
-        </div>
-
-        {error && <div style={styles.error}>⚠️ {error}</div>}
-
-        {startResult && (
-          <div style={styles.resultBox}>
-            <div>
-              <b>Payment ID:</b> {startResult.payment_id}
-            </div>
-            <div>
-              <b>Checkout URL:</b>{" "}
-              <a
-                href={startResult.access_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {startResult.access_url}
-              </a>
-            </div>
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div>
+          <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
+          <div style={{ color: "#6b7280", margin: "0 0 8px 0", fontSize: 12 }}>
+            {BUILD_TAG}
           </div>
-        )}
-      </form>
-
-      {/* Date range report */}
-      <section style={styles.card}>
-        <h2 style={styles.h2}>Date range report</h2>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            style={styles.input}
-            type="date"
-            id="rangeFrom"
-            defaultValue={new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
-          />
-          <span>to</span>
-          <input
-            style={styles.input}
-            type="date"
-            id="rangeTo"
-            defaultValue={new Date().toISOString().slice(0, 10)}
-          />
-          <button
-            type="button"
-            onClick={() => {
-              const from = document.getElementById("rangeFrom").value;
-              const to = document.getElementById("rangeTo").value;
-              const base = process.env.REACT_APP_API_BASE || "http://localhost:5050";
-              window.open(`${base}/report/range?from=${from}&to=${to}`, "_blank");
-            }}
-            style={styles.secondaryBtn}
-          >
-            View JSON
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const from = document.getElementById("rangeFrom").value;
-              const to = document.getElementById("rangeTo").value;
-              const base = process.env.REACT_APP_API_BASE || "http://localhost:5050";
-              const url = `${base}/report/range.csv?from=${from}&to=${to}`;
-              window.open(url, "_blank"); // browser will prompt for Basic Auth
-            }}
-            style={styles.secondaryBtn}
-          >
-            Download CSV
-          </button>
         </div>
-      </section>
-
-      <section style={styles.card}>
-        <div style={styles.listHeader}>
-          <h2 style={styles.h2}>Recent payments</h2>
+        <nav style={{ display: "flex", gap: 8 }}>
           <button
-            onClick={fetchPayments}
-            style={styles.secondaryBtn}
-            disabled={loadingPayments}
+            style={{ ...styles.secondaryBtn, ...(view === "pos" ? styles.primaryBtn : {}) }}
+            onClick={() => setView("pos")}
           >
-            {loadingPayments ? "Refreshing..." : "Refresh"}
+            POS
           </button>
-        </div>
+          <button
+            style={{ ...styles.secondaryBtn, ...(view === "admin" ? styles.primaryBtn : {}) }}
+            onClick={() => setView("admin")}
+          >
+            Admin
+          </button>
+        </nav>
+      </header>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th>Created</th>
-                <th>Order ID</th>
-                <th>Fiat</th>
-                <th>Crypto</th>
-                <th>Status</th>
-                <th>Customer email</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: "center", color: "#666" }}>
-                    No payments yet.
-                  </td>
-                </tr>
+      {view === "admin" ? (
+        <AdminPanel apiBase={API_BASE} styles={styles} />
+      ) : (
+        <>
+          <form onSubmit={handleStartPayment} style={styles.card}>
+            <div style={styles.row}>
+              <label style={styles.label}>Amount</label>
+              <input
+                style={styles.input}
+                type="number"
+                step="0.01"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={styles.row}>
+              <label style={styles.label}>Fiat currency</label>
+              <select
+                style={styles.input}
+                value={invoiceCurrency}
+                onChange={(e) => setInvoiceCurrency(e.target.value)}
+              >
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+
+            <div style={styles.row}>
+              <label style={styles.label}>Crypto to receive</label>
+              <select
+                style={styles.input}
+                value={cryptoCurrency}
+                onChange={(e) => setCryptoCurrency(e.target.value)}
+              >
+                <option value="USDT">USDT (ERC20)</option>
+              </select>
+            </div>
+
+            <div style={styles.row}>
+              <label style={styles.label}>Payer ID</label>
+              <input
+                style={styles.input}
+                type="text"
+                value={payerId}
+                onChange={(e) => setPayerId(e.target.value)}
+                placeholder="walk-in"
+              />
+            </div>
+
+            <div style={styles.row}>
+              <label style={styles.label}>Customer email (optional)</label>
+              <input
+                style={styles.input}
+                type="email"
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button type="submit" style={styles.primaryBtn} disabled={starting}>
+                {starting ? "Creating..." : "Charge"}
+              </button>
+
+              {startResult?.access_url && (
+                <button
+                  type="button"
+                  style={styles.secondaryBtn}
+                  onClick={openCheckout}
+                >
+                  Open checkout
+                </button>
               )}
-              {payments.map((row) => {
-                const isConfirmed =
-                  String(row.state || row.status).toLowerCase() === "confirmed";
-                return (
-                  <React.Fragment
-                    key={row.payment_id || row.created_at || Math.random()}
+            </div>
+
+            {error && <div style={styles.error}>⚠️ {error}</div>}
+
+            {startResult && (
+              <div style={styles.resultBox}>
+                <div>
+                  <b>Payment ID:</b> {startResult.payment_id}
+                </div>
+                <div>
+                  <b>Checkout URL:</b>{" "}
+                  <a
+                    href={startResult.access_url}
+                    target="_blank"
+                    rel="noreferrer"
                   >
+                    {startResult.access_url}
+                  </a>
+                </div>
+              </div>
+            )}
+          </form>
+
+          {/* Date range report (opens endpoints in new tab with browser auth prompt) */}
+          <section style={styles.card}>
+            <h2 style={styles.h2}>Date range report</h2>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                style={styles.input}
+                type="date"
+                id="rangeFrom"
+                defaultValue={new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
+              />
+              <span>to</span>
+              <input
+                style={styles.input}
+                type="date"
+                id="rangeTo"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const from = document.getElementById("rangeFrom").value;
+                  const to = document.getElementById("rangeTo").value;
+                  window.open(`${API_BASE}/report/range?from=${from}&to=${to}`, "_blank");
+                }}
+                style={styles.secondaryBtn}
+              >
+                View JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const from = document.getElementById("rangeFrom").value;
+                  const to = document.getElementById("rangeTo").value;
+                  window.open(`${API_BASE}/report/range.csv?from=${from}&to=${to}`, "_blank");
+                }}
+                style={styles.secondaryBtn}
+              >
+                Download CSV
+              </button>
+            </div>
+          </section>
+
+          <section style={styles.card}>
+            <div style={styles.listHeader}>
+              <h2 style={styles.h2}>Recent payments</h2>
+              <button
+                onClick={fetchPayments}
+                style={styles.secondaryBtn}
+                disabled={loadingPayments}
+              >
+                {loadingPayments ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Order ID</th>
+                    <th>Fiat</th>
+                    <th>Crypto</th>
+                    <th>Status</th>
+                    <th>Customer email</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.length === 0 && (
                     <tr>
-                      <td>{row.created_at || "—"}</td>
-                      <td>{row.order_id || "—"}</td>
-                      <td>
-                        {row.invoice_amount
-                          ? `${row.invoice_amount} ${row.invoice_currency}`
-                          : "—"}
-                      </td>
-                      <td>
-                        {row.crypto_amount
-                          ? `${row.crypto_amount} ${row.currency}`
-                          : "—"}
-                      </td>
-                      <td>
-                        <StatusPill status={row.state || row.status} />
-                      </td>
-                      <td>{row.customer_email || "—"}</td>
-                      <td>
-                        <button
-                          onClick={() => openEmailForm(row)}
-                          disabled={!row?.payment_id || !isConfirmed}
-                          style={styles.smallBtn}
-                          title={
-                            !row?.payment_id
-                              ? "Unavailable"
-                              : !isConfirmed
-                              ? "Available after confirmation"
-                              : "Send receipt"
-                          }
-                          data-testid="email-btn"
-                        >
-                          Email receipt
-                        </button>{" "}
-                        {row?.payment_id && (
-                          <a
-                            href={`${API_BASE}/receipt/${row.payment_id}/print`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={styles.linkBtn}
-                          >
-                            Print
-                          </a>
-                        )}{" "}
-                        <button
-                          onClick={() => recheck(row.payment_id)}
-                          disabled={!row?.payment_id}
-                          style={styles.smallBtn}
-                          title="Re-check status with ForumPay"
-                          data-testid="recheck-btn"
-                        >
-                          Re-check
-                        </button>
+                      <td colSpan={7} style={{ textAlign: "center", color: "#666" }}>
+                        No payments yet.
                       </td>
                     </tr>
-
-                    {emailTargetId === row.payment_id && (
-                      <tr>
-                        <td colSpan={7}>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                            <input
-                              style={{ ...styles.input, maxWidth: 360 }}
-                              type="email"
-                              placeholder="name@example.com"
-                              value={emailAddress}
-                              onChange={(e) => setEmailAddress(e.target.value)}
-                              data-testid="email-input"
-                            />
+                  )}
+                  {payments.map((row) => {
+                    const isConfirmed =
+                      String(row.state || row.status).toLowerCase() === "confirmed";
+                    return (
+                      <React.Fragment
+                        key={row.payment_id || row.created_at || Math.random()}
+                      >
+                        <tr>
+                          <td>{row.created_at || "—"}</td>
+                          <td>{row.order_id || "—"}</td>
+                          <td>
+                            {row.invoice_amount
+                              ? `${row.invoice_amount} ${row.invoice_currency}`
+                              : "—"}
+                          </td>
+                          <td>
+                            {row.crypto_amount
+                              ? `${row.crypto_amount} ${row.currency}`
+                              : "—"}
+                          </td>
+                          <td>
+                            <StatusPill status={row.state || row.status} />
+                          </td>
+                          <td>{row.customer_email || "—"}</td>
+                          <td>
                             <button
-                              type="button"
-                              onClick={sendEmail}
-                              disabled={sendingEmail || !emailAddress.trim()}
+                              onClick={() => openEmailForm(row)}
+                              disabled={!row?.payment_id || !isConfirmed}
                               style={styles.smallBtn}
-                              data-testid="email-send"
+                              title={
+                                !row?.payment_id
+                                  ? "Unavailable"
+                                  : !isConfirmed
+                                  ? "Available after confirmation"
+                                  : "Send receipt"
+                              }
+                              data-testid="email-btn"
                             >
-                              {sendingEmail ? "Sending..." : "Send"}
-                            </button>
+                              Email receipt
+                            </button>{" "}
+                            {row?.payment_id && (
+                              <a
+                                href={`${API_BASE}/receipt/${row.payment_id}/print`}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={styles.linkBtn}
+                              >
+                                Print
+                              </a>
+                            )}{" "}
                             <button
-                              type="button"
-                              onClick={cancelEmailForm}
-                              style={styles.secondaryBtn}
-                              data-testid="email-cancel"
+                              onClick={() => recheck(row.payment_id)}
+                              disabled={!row?.payment_id}
+                              style={styles.smallBtn}
+                              title="Re-check status with ForumPay"
+                              data-testid="recheck-btn"
                             >
-                              Cancel
+                              Re-check
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                          </td>
+                        </tr>
 
-      <section style={styles.card}>
-        <h2 style={styles.h2}>Daily report</h2>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            style={styles.input}
-            type="date"
-            id="reportDate"
-            defaultValue={new Date().toISOString().slice(0, 10)}
-          />
-          <button
-            type="button"
-            onClick={() => {
-              const d = document.getElementById("reportDate").value;
-              window.open(`${API_BASE}/report/daily?date=${d}`, "_blank");
-            }}
-            style={styles.secondaryBtn}
-          >
-            View JSON
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const d = document.getElementById("reportDate").value;
-              window.open(`${API_BASE}/report/daily.csv?date=${d}`, "_blank");
-            }}
-            style={styles.secondaryBtn}
-          >
-            Download CSV
-          </button>
-        </div>
-      </section>
+                        {emailTargetId === row.payment_id && (
+                          <tr>
+                            <td colSpan={7}>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                <input
+                                  style={{ ...styles.input, maxWidth: 360 }}
+                                  type="email"
+                                  placeholder="name@example.com"
+                                  value={emailAddress}
+                                  onChange={(e) => setEmailAddress(e.target.value)}
+                                  data-testid="email-input"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={sendEmail}
+                                  disabled={sendingEmail || !emailAddress.trim()}
+                                  style={styles.smallBtn}
+                                  data-testid="email-send"
+                                >
+                                  {sendingEmail ? "Sending..." : "Send"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEmailForm}
+                                  style={styles.secondaryBtn}
+                                  data-testid="email-cancel"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section style={styles.card}>
+            <h2 style={styles.h2}>Daily report</h2>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                style={styles.input}
+                type="date"
+                id="reportDate"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const d = document.getElementById("reportDate").value;
+                  window.open(`${API_BASE}/report/daily?date=${d}`, "_blank");
+                }}
+                style={styles.secondaryBtn}
+              >
+                View JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = document.getElementById("reportDate").value;
+                  window.open(`${API_BASE}/report/daily.csv?date=${d}`, "_blank");
+                }}
+                style={styles.secondaryBtn}
+              >
+                Download CSV
+              </button>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
