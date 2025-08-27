@@ -3,44 +3,36 @@ import React, { useEffect, useState } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-// Build tag so we can verify the UI is fresh after deploy
-const BUILD_TAG = "UI build: 2025-08-27 15:30";
-
-// Change this if your backend runs elsewhere
+const BUILD_TAG = "UI build: 2025-08-27 16:45";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
-  // --- Charge form state ---
-  const [amount, setAmount] = useState("25.00"); // base amount BEFORE tip
-  const [tipPct, setTipPct] = useState(0);       // 0 | 10 | 15 | 20
+  const [amount, setAmount] = useState("25.00");
+  const [tipPct, setTipPct] = useState(0);
   const [invoiceCurrency, setInvoiceCurrency] = useState("USD");
   const [cryptoCurrency, setCryptoCurrency] = useState("USDT");
   const [payerId, setPayerId] = useState("walk-in");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
+  useEffect(() => { localStorage.setItem("cashier", cashier); }, [cashier]);
 
-  // derived totals
   const base = safeNum(amount);
   const tipAmount = round2((base * tipPct) / 100);
   const totalAmount = round2(base + tipAmount);
 
-  // --- Start payment state ---
   const [starting, setStarting] = useState(false);
   const [startResult, setStartResult] = useState(null);
   const [error, setError] = useState("");
 
-  // --- Payments table state ---
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
-  // --- Inline email UI state ---
   const [emailTargetId, setEmailTargetId] = useState(null);
   const [emailAddress, setEmailAddress] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  // --- Admin panel toggle ---
   const [showAdmin, setShowAdmin] = useState(false);
 
-  // Fetch recent payments (poll every 5s)
   async function fetchPayments() {
     try {
       setLoadingPayments(true);
@@ -60,7 +52,6 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  // Start a sandbox payment via backend
   async function handleStartPayment(e) {
     e.preventDefault();
     setError("");
@@ -68,14 +59,14 @@ export default function App() {
     setStarting(true);
     try {
       const body = {
-        invoice_amount: totalAmount.toFixed(2), // send total (base + tip)
+        invoice_amount: totalAmount.toFixed(2),
         invoice_currency: invoiceCurrency,
         currency: cryptoCurrency,
         payer_id: payerId || "walk-in",
-        // Optional metadata if you later want tip breakdown server-side
         meta_tip_percent: tipPct,
         meta_tip_amount: tipAmount.toFixed(2),
         meta_base_amount: base.toFixed(2),
+        meta_cashier: cashier || null,
       };
       if (customerEmail.trim()) body.customer_email = customerEmail.trim();
 
@@ -107,7 +98,6 @@ export default function App() {
     }
   }
 
-  // Open inline email form for a specific (confirmed) payment
   function openEmailForm(row) {
     setEmailTargetId(row.payment_id);
     setEmailAddress(row.customer_email || customerEmail || "");
@@ -118,7 +108,6 @@ export default function App() {
     setEmailAddress("");
   }
 
-  // Send receipt via backend (better error parsing)
   async function sendEmail() {
     if (!emailTargetId) return;
     if (!emailAddress.trim()) {
@@ -152,7 +141,6 @@ export default function App() {
     }
   }
 
-  // Re-check payment status via backend
   async function recheck(paymentId) {
     try {
       const r = await fetch(`${API_BASE}/payments/${paymentId}/recheck`, { method: "POST" });
@@ -260,6 +248,17 @@ export default function App() {
             value={payerId}
             onChange={(e) => setPayerId(e.target.value)}
             placeholder="walk-in"
+          />
+        </div>
+
+        <div style={styles.row}>
+          <label style={styles.label}>Cashier name</label>
+          <input
+            style={styles.input}
+            type="text"
+            value={cashier}
+            onChange={(e) => setCashier(e.target.value)}
+            placeholder="Cashier"
           />
         </div>
 
@@ -464,7 +463,6 @@ export default function App() {
   );
 }
 
-// --- helpers ---
 function safeNum(v) {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
@@ -477,7 +475,6 @@ function fmt(n, ccy) {
   return `${s} ${ccy}`;
 }
 
-// --- styles ---
 const styles = {
   wrap: { maxWidth: 980, margin: "24px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial" },
   headerRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
