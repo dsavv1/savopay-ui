@@ -1,7 +1,11 @@
+// src/App.js
 import React, { useEffect, useState } from "react";
-import StatusPill from "./components/StatusPill"; 
+import StatusPill from "./components/StatusPill";
 
+// Build tag so we can verify the UI is fresh after deploy
 const BUILD_TAG = "UI build: 2025-08-22 14:10";
+
+// Change this if your backend runs elsewhere
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -18,10 +22,12 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
+  // Inline email UI state
   const [emailTargetId, setEmailTargetId] = useState(null);
   const [emailAddress, setEmailAddress] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  // Fetch recent payments (poll every 5s)
   async function fetchPayments() {
     try {
       setLoadingPayments(true);
@@ -41,6 +47,7 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
+  // Start a sandbox payment via backend
   async function handleStartPayment(e) {
     e.preventDefault();
     setError("");
@@ -85,6 +92,7 @@ export default function App() {
     }
   }
 
+  // Open inline email form for a specific (confirmed) payment
   function openEmailForm(row) {
     setEmailTargetId(row.payment_id);
     setEmailAddress(row.customer_email || customerEmail || "");
@@ -95,6 +103,7 @@ export default function App() {
     setEmailAddress("");
   }
 
+  // Send receipt via backend
   async function sendEmail() {
     if (!emailTargetId) return;
     if (!emailAddress.trim()) {
@@ -135,6 +144,7 @@ export default function App() {
     }
   }
 
+  // Re-check payment status via backend
   async function recheck(paymentId) {
     try {
       const r = await fetch(`${API_BASE}/payments/${paymentId}/recheck`, {
@@ -262,6 +272,51 @@ export default function App() {
         )}
       </form>
 
+      {/* Date range report */}
+      <section style={styles.card}>
+        <h2 style={styles.h2}>Date range report</h2>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            style={styles.input}
+            type="date"
+            id="rangeFrom"
+            defaultValue={new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
+          />
+          <span>to</span>
+          <input
+            style={styles.input}
+            type="date"
+            id="rangeTo"
+            defaultValue={new Date().toISOString().slice(0, 10)}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const from = document.getElementById("rangeFrom").value;
+              const to = document.getElementById("rangeTo").value;
+              const base = process.env.REACT_APP_API_BASE || "http://localhost:5050";
+              window.open(`${base}/report/range?from=${from}&to=${to}`, "_blank");
+            }}
+            style={styles.secondaryBtn}
+          >
+            View JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const from = document.getElementById("rangeFrom").value;
+              const to = document.getElementById("rangeTo").value;
+              const base = process.env.REACT_APP_API_BASE || "http://localhost:5050";
+              const url = `${base}/report/range.csv?from=${from}&to=${to}`;
+              window.open(url, "_blank"); // browser will prompt for Basic Auth
+            }}
+            style={styles.secondaryBtn}
+          >
+            Download CSV
+          </button>
+        </div>
+      </section>
+
       <section style={styles.card}>
         <div style={styles.listHeader}>
           <h2 style={styles.h2}>Recent payments</h2>
@@ -324,6 +379,14 @@ export default function App() {
                           onClick={() => openEmailForm(row)}
                           disabled={!row?.payment_id || !isConfirmed}
                           style={styles.smallBtn}
+                          title={
+                            !row?.payment_id
+                              ? "Unavailable"
+                              : !isConfirmed
+                              ? "Available after confirmation"
+                              : "Send receipt"
+                          }
+                          data-testid="email-btn"
                         >
                           Email receipt
                         </button>{" "}
@@ -341,6 +404,8 @@ export default function App() {
                           onClick={() => recheck(row.payment_id)}
                           disabled={!row?.payment_id}
                           style={styles.smallBtn}
+                          title="Re-check status with ForumPay"
+                          data-testid="recheck-btn"
                         >
                           Re-check
                         </button>
@@ -350,23 +415,21 @@ export default function App() {
                     {emailTargetId === row.payment_id && (
                       <tr>
                         <td colSpan={7}>
-                          <div style={{ display: "flex", gap: 8 }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             <input
                               style={{ ...styles.input, maxWidth: 360 }}
                               type="email"
                               placeholder="name@example.com"
                               value={emailAddress}
-                              onChange={(e) =>
-                                setEmailAddress(e.target.value)
-                              }
+                              onChange={(e) => setEmailAddress(e.target.value)}
+                              data-testid="email-input"
                             />
                             <button
                               type="button"
                               onClick={sendEmail}
-                              disabled={
-                                sendingEmail || !emailAddress.trim()
-                              }
+                              disabled={sendingEmail || !emailAddress.trim()}
                               style={styles.smallBtn}
+                              data-testid="email-send"
                             >
                               {sendingEmail ? "Sending..." : "Send"}
                             </button>
@@ -374,6 +437,7 @@ export default function App() {
                               type="button"
                               onClick={cancelEmailForm}
                               style={styles.secondaryBtn}
+                              data-testid="email-cancel"
                             >
                               Cancel
                             </button>
@@ -391,7 +455,7 @@ export default function App() {
 
       <section style={styles.card}>
         <h2 style={styles.h2}>Daily report</h2>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <input
             style={styles.input}
             type="date"
@@ -429,8 +493,7 @@ const styles = {
     maxWidth: 920,
     margin: "24px auto",
     padding: "0 16px",
-    fontFamily:
-      "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial",
+    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial",
   },
   h1: { margin: "0 0 8px 0", fontSize: 28 },
   h2: { margin: "0", fontSize: 20 },
@@ -442,8 +505,8 @@ const styles = {
     background: "#fff",
     boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
   },
-  row: { display: "flex", gap: 12, marginBottom: 12 },
-  label: { width: 160, fontWeight: 600 },
+  row: { display: "flex", gap: 12, alignItems: "center", marginBottom: 12 },
+  label: { width: 160, color: "#111", fontWeight: 600 },
   input: {
     flex: 1,
     minWidth: 200,
@@ -457,13 +520,16 @@ const styles = {
     border: "1px solid #111",
     background: "#111",
     color: "#fff",
+    cursor: "pointer",
   },
   secondaryBtn: {
+    display: "inline-block",
     padding: "10px 14px",
     borderRadius: 8,
     border: "1px solid #111",
     background: "#fff",
     color: "#111",
+    cursor: "pointer",
   },
   smallBtn: {
     padding: "6px 10px",
@@ -471,6 +537,7 @@ const styles = {
     border: "1px solid #111",
     background: "#111",
     color: "#fff",
+    cursor: "pointer",
   },
   linkBtn: {
     padding: "6px 10px",
@@ -489,6 +556,7 @@ const styles = {
   },
   listHeader: {
     display: "flex",
+    alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
   },
