@@ -33,6 +33,10 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState("all"); // all | confirmed | waiting | cancelled | created | failed | other
   const [search, setSearch] = useState("");
 
+  // Pagination
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+
   // Inline email UI state
   const [emailTargetId, setEmailTargetId] = useState(null);
   const [emailAddress, setEmailAddress] = useState("");
@@ -58,6 +62,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reset to first page when filters/search change
+  useEffect(() => {
+    setPage(0);
+  }, [filterStatus, search, pageSize]);
+
   async function handleStartPayment(e) {
     e.preventDefault();
     setError("");
@@ -80,16 +89,10 @@ export default function App() {
 
       const text = await resp.text();
       let json;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = { raw: text };
-      }
+      try { json = JSON.parse(text); } catch { json = { raw: text }; }
 
       if (!resp.ok) {
-        throw new Error(
-          (json && (json.error || json.detail)) || `HTTP ${resp.status}`
-        );
+        throw new Error((json && (json.error || json.detail)) || `HTTP ${resp.status}`);
       }
 
       setStartResult(json);
@@ -125,18 +128,10 @@ export default function App() {
       });
 
       const raw = await r.text();
-      let data;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        data = { raw };
-      }
+      let data; try { data = JSON.parse(raw); } catch { data = { raw }; }
 
       if (!r.ok) {
-        const msg =
-          data?.error ||
-          data?.detail ||
-          `HTTP ${r.status}: ${String(raw).slice(0, 140)}`;
+        const msg = data?.error || data?.detail || `HTTP ${r.status}: ${String(raw).slice(0, 140)}`;
         throw new Error(msg);
       }
 
@@ -152,16 +147,10 @@ export default function App() {
 
   async function recheck(paymentId) {
     try {
-      const r = await fetch(`${API_BASE}/payments/${paymentId}/recheck`, {
-        method: "POST",
-      });
+      const r = await fetch(`${API_BASE}/payments/${paymentId}/recheck`, { method: "POST" });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || "Failed to re-check");
-      alert(
-        `Status: ${data.state || "unknown"}${
-          data.confirmed ? " (confirmed)" : ""
-        }`
-      );
+      alert(`Status: ${data.state || "unknown"}${data.confirmed ? " (confirmed)" : ""}`);
       fetchPayments();
     } catch (e) {
       console.error("recheck error:", e);
@@ -187,65 +176,90 @@ export default function App() {
           : filterStatus === "cancelled"
           ? ["cancelled", "canceled"].includes(s)
           : filterStatus === "other"
-          ? !["confirmed", "waiting", "cancelled", "canceled", "created", "failed", "error"].includes(
-              s
-            )
+          ? !["confirmed", "waiting", "cancelled", "canceled", "created", "failed", "error"].includes(s)
           : s === filterStatus;
 
       if (!statusOk) return false;
 
       if (!term) return true;
-      const hay =
-        [
-          p.payment_id,
-          p.order_id,
-          p.customer_email,
-          p.invoice_currency,
-          p.currency,
-          p.invoice_amount,
-          p.crypto_amount,
-          p.created_at,
-          p.payer_id,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase() || "";
+      const hay = [
+        p.payment_id,
+        p.order_id,
+        p.customer_email,
+        p.invoice_currency,
+        p.currency,
+        p.invoice_amount,
+        p.crypto_amount,
+        p.created_at,
+        p.payer_id,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
 
       return hay.includes(term);
     });
   }, [payments, filterStatus, search]);
 
+  // Pagination
+  const pageCount = Math.max(1, Math.ceil(filteredPayments.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const startIdx = currentPage * pageSize;
+  const endIdx = startIdx + pageSize;
+  const visiblePayments = filteredPayments.slice(startIdx, endIdx);
+
+  // Export CSV (client-side) for *filtered* rows
+  function exportFilteredCsv() {
+    const rows = filteredPayments;
+    const cols = [
+      "created_at",
+      "payment_id",
+      "order_id",
+      "invoice_amount",
+      "invoice_currency",
+      "crypto_amount",
+      "currency",
+      "state",
+      "status",
+      "customer_email",
+      "payer_id",
+    ];
+    const esc = (v) => {
+      let s = v == null ? "" : String(v);
+      if (/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const header = cols.join(",");
+    const lines = rows.map((r) => cols.map((c) => esc(r?.[c])).join(","));
+    const csv = [header, ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const from = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `savopay_filtered_${from}_${rows.length}rows.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div style={styles.wrap}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
-          <div style={{ color: "#6b7280", margin: "0 0 8px 0", fontSize: 12 }}>
-            {BUILD_TAG}
-          </div>
+          <div style={{ color: "#6b7280", margin: "0 0 8px 0", fontSize: 12 }}>{BUILD_TAG}</div>
         </div>
         <nav style={{ display: "flex", gap: 8 }}>
           <button
-            style={{
-              ...styles.secondaryBtn,
-              ...(view === "pos" ? styles.primaryBtn : {}),
-            }}
+            style={{ ...styles.secondaryBtn, ...(view === "pos" ? styles.primaryBtn : {}) }}
             onClick={() => setView("pos")}
           >
             POS
           </button>
           <button
-            style={{
-              ...styles.secondaryBtn,
-              ...(view === "admin" ? styles.primaryBtn : {}),
-            }}
+            style={{ ...styles.secondaryBtn, ...(view === "admin" ? styles.primaryBtn : {}) }}
             onClick={() => setView("admin")}
           >
             Admin
@@ -322,11 +336,7 @@ export default function App() {
               </button>
 
               {startResult?.access_url && (
-                <button
-                  type="button"
-                  style={styles.secondaryBtn}
-                  onClick={openCheckout}
-                >
+                <button type="button" style={styles.secondaryBtn} onClick={openCheckout}>
                   Open checkout
                 </button>
               )}
@@ -336,16 +346,10 @@ export default function App() {
 
             {startResult && (
               <div style={styles.resultBox}>
-                <div>
-                  <b>Payment ID:</b> {startResult.payment_id}
-                </div>
+                <div><b>Payment ID:</b> {startResult.payment_id}</div>
                 <div>
                   <b>Checkout URL:</b>{" "}
-                  <a
-                    href={startResult.access_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <a href={startResult.access_url} target="_blank" rel="noreferrer">
                     {startResult.access_url}
                   </a>
                 </div>
@@ -355,23 +359,12 @@ export default function App() {
 
           <section style={styles.card}>
             <h2 style={styles.h2}>Date range report</h2>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <input
                 style={styles.input}
                 type="date"
                 id="rangeFrom"
-                defaultValue={new Date(
-                  Date.now() - 6 * 24 * 3600 * 1000
-                )
-                  .toISOString()
-                  .slice(0, 10)}
+                defaultValue={new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
               />
               <span>to</span>
               <input
@@ -385,10 +378,7 @@ export default function App() {
                 onClick={() => {
                   const from = document.getElementById("rangeFrom").value;
                   const to = document.getElementById("rangeTo").value;
-                  window.open(
-                    `${API_BASE}/report/range?from=${from}&to=${to}`,
-                    "_blank"
-                  );
+                  window.open(`${API_BASE}/report/range?from=${from}&to=${to}`, "_blank");
                 }}
                 style={styles.secondaryBtn}
               >
@@ -399,10 +389,7 @@ export default function App() {
                 onClick={() => {
                   const from = document.getElementById("rangeFrom").value;
                   const to = document.getElementById("rangeTo").value;
-                  window.open(
-                    `${API_BASE}/report/range.csv?from=${from}&to=${to}`,
-                    "_blank"
-                  );
+                  window.open(`${API_BASE}/report/range.csv?from=${from}&to=${to}`, "_blank");
                 }}
                 style={styles.secondaryBtn}
               >
@@ -419,7 +406,7 @@ export default function App() {
                   Showing {filteredPayments.length} of {payments.length}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <select
                   style={{ ...styles.input, maxWidth: 200 }}
                   value={filterStatus}
@@ -441,11 +428,21 @@ export default function App() {
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search ID, email, order..."
                 />
-                <button
-                  onClick={fetchPayments}
-                  style={styles.secondaryBtn}
-                  disabled={loadingPayments}
+                <select
+                  style={{ ...styles.input, maxWidth: 120 }}
+                  value={pageSize}
+                  onChange={(e) => setPageSize(parseInt(e.target.value || "25", 10))}
+                  title="Rows per page"
                 >
+                  <option value={10}>10 / page</option>
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
+                <button onClick={exportFilteredCsv} style={styles.secondaryBtn} title="Export filtered rows">
+                  Export filtered CSV
+                </button>
+                <button onClick={fetchPayments} style={styles.secondaryBtn} disabled={loadingPayments}>
                   {loadingPayments ? "Refreshing..." : "Refresh"}
                 </button>
               </div>
@@ -471,49 +468,34 @@ export default function App() {
                         No payments yet.
                       </td>
                     </tr>
-                  ) : filteredPayments.length === 0 ? (
+                  ) : visiblePayments.length === 0 ? (
                     <tr>
                       <td colSpan={7} style={{ textAlign: "center", color: "#666" }}>
                         No matches for your filters.
                       </td>
                     </tr>
                   ) : (
-                    filteredPayments.map((row) => {
-                      const isConfirmed =
-                        normStatus(row.state || row.status) === "confirmed";
+                    visiblePayments.map((row) => {
+                      const isConfirmed = normStatus(row.state || row.status) === "confirmed";
                       return (
-                        <React.Fragment
-                          key={row.payment_id || row.created_at || Math.random()}
-                        >
+                        <React.Fragment key={row.payment_id || row.created_at || Math.random()}>
                           <tr>
                             <td>{row.created_at || "—"}</td>
                             <td>{row.order_id || "—"}</td>
                             <td>
-                              {row.invoice_amount
-                                ? `${row.invoice_amount} ${row.invoice_currency}`
-                                : "—"}
+                              {row.invoice_amount ? `${row.invoice_amount} ${row.invoice_currency}` : "—"}
                             </td>
                             <td>
-                              {row.crypto_amount
-                                ? `${row.crypto_amount} ${row.currency}`
-                                : "—"}
+                              {row.crypto_amount ? `${row.crypto_amount} ${row.currency}` : "—"}
                             </td>
-                            <td>
-                              <StatusPill status={row.state || row.status} />
-                            </td>
+                            <td><StatusPill status={row.state || row.status} /></td>
                             <td>{row.customer_email || "—"}</td>
                             <td>
                               <button
                                 onClick={() => openEmailForm(row)}
                                 disabled={!row?.payment_id || !isConfirmed}
                                 style={styles.smallBtn}
-                                title={
-                                  !row?.payment_id
-                                    ? "Unavailable"
-                                    : !isConfirmed
-                                    ? "Available after confirmation"
-                                    : "Send receipt"
-                                }
+                                title={!row?.payment_id ? "Unavailable" : !isConfirmed ? "Available after confirmation" : "Send receipt"}
                                 data-testid="email-btn"
                               >
                                 Email receipt
@@ -543,29 +525,19 @@ export default function App() {
                           {emailTargetId === row.payment_id && (
                             <tr>
                               <td colSpan={7}>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: 8,
-                                    alignItems: "center",
-                                  }}
-                                >
+                                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                                   <input
                                     style={{ ...styles.input, maxWidth: 360 }}
                                     type="email"
                                     placeholder="name@example.com"
                                     value={emailAddress}
-                                    onChange={(e) =>
-                                      setEmailAddress(e.target.value)
-                                    }
+                                    onChange={(e) => setEmailAddress(e.target.value)}
                                     data-testid="email-input"
                                   />
                                   <button
                                     type="button"
                                     onClick={sendEmail}
-                                    disabled={
-                                      sendingEmail || !emailAddress.trim()
-                                    }
+                                    disabled={sendingEmail || !emailAddress.trim()}
                                     style={styles.smallBtn}
                                     data-testid="email-send"
                                   >
@@ -590,18 +562,34 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination controls */}
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, alignItems: "center" }}>
+              <div style={{ color: "#6b7280", fontSize: 12 }}>
+                Page {currentPage + 1} of {pageCount} — rows {filteredPayments.length ? startIdx + 1 : 0}–{Math.min(endIdx, filteredPayments.length)} of {filteredPayments.length}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  style={styles.secondaryBtn}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                >
+                  ◀ Prev
+                </button>
+                <button
+                  style={styles.secondaryBtn}
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  disabled={currentPage >= pageCount - 1}
+                >
+                  Next ▶
+                </button>
+              </div>
+            </div>
           </section>
 
           <section style={styles.card}>
             <h2 style={styles.h2}>Daily report</h2>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <input
                 style={styles.input}
                 type="date"
