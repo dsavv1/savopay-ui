@@ -1,28 +1,37 @@
-import React, { useEffect, useState } from "react";
+// src/App.js
+import React, { useEffect, useMemo, useState } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-// Build tag so we can verify the UI is fresh after deploy
 const BUILD_TAG = "UI build: 2025-08-22 14:10";
-
-// Change this if your backend runs elsewhere
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
+
+function normStatus(s) {
+  return String(s || "").toLowerCase().trim();
+}
 
 export default function App() {
   const [view, setView] = useState("pos"); // "pos" | "admin"
 
+  // Charge form
   const [amount, setAmount] = useState("25.00");
   const [invoiceCurrency, setInvoiceCurrency] = useState("USD");
   const [cryptoCurrency, setCryptoCurrency] = useState("USDT");
   const [payerId, setPayerId] = useState("walk-in");
   const [customerEmail, setCustomerEmail] = useState("");
 
+  // Start payment state
   const [starting, setStarting] = useState(false);
   const [startResult, setStartResult] = useState(null);
   const [error, setError] = useState("");
 
+  // Payments table
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
+
+  // Filters
+  const [filterStatus, setFilterStatus] = useState("all"); // all | confirmed | waiting | cancelled | created | failed | other
+  const [search, setSearch] = useState("");
 
   // Inline email UI state
   const [emailTargetId, setEmailTargetId] = useState(null);
@@ -46,6 +55,7 @@ export default function App() {
     fetchPayments();
     const t = setInterval(fetchPayments, 5000);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleStartPayment(e) {
@@ -96,12 +106,10 @@ export default function App() {
     setEmailTargetId(row.payment_id);
     setEmailAddress(row.customer_email || customerEmail || "");
   }
-
   function cancelEmailForm() {
     setEmailTargetId(null);
     setEmailAddress("");
   }
-
   async function sendEmail() {
     if (!emailTargetId) return;
     if (!emailAddress.trim()) {
@@ -166,9 +174,57 @@ export default function App() {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  // Derived filtered list
+  const filteredPayments = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return payments.filter((p) => {
+      const s = normStatus(p.state || p.status);
+      const statusOk =
+        filterStatus === "all"
+          ? true
+          : filterStatus === "failed"
+          ? ["failed", "error"].includes(s)
+          : filterStatus === "cancelled"
+          ? ["cancelled", "canceled"].includes(s)
+          : filterStatus === "other"
+          ? !["confirmed", "waiting", "cancelled", "canceled", "created", "failed", "error"].includes(
+              s
+            )
+          : s === filterStatus;
+
+      if (!statusOk) return false;
+
+      if (!term) return true;
+      const hay =
+        [
+          p.payment_id,
+          p.order_id,
+          p.customer_email,
+          p.invoice_currency,
+          p.currency,
+          p.invoice_amount,
+          p.crypto_amount,
+          p.created_at,
+          p.payer_id,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase() || "";
+
+      return hay.includes(term);
+    });
+  }, [payments, filterStatus, search]);
+
   return (
     <div style={styles.wrap}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
         <div>
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
           <div style={{ color: "#6b7280", margin: "0 0 8px 0", fontSize: 12 }}>
@@ -177,13 +233,19 @@ export default function App() {
         </div>
         <nav style={{ display: "flex", gap: 8 }}>
           <button
-            style={{ ...styles.secondaryBtn, ...(view === "pos" ? styles.primaryBtn : {}) }}
+            style={{
+              ...styles.secondaryBtn,
+              ...(view === "pos" ? styles.primaryBtn : {}),
+            }}
             onClick={() => setView("pos")}
           >
             POS
           </button>
           <button
-            style={{ ...styles.secondaryBtn, ...(view === "admin" ? styles.primaryBtn : {}) }}
+            style={{
+              ...styles.secondaryBtn,
+              ...(view === "admin" ? styles.primaryBtn : {}),
+            }}
             onClick={() => setView("admin")}
           >
             Admin
@@ -291,15 +353,25 @@ export default function App() {
             )}
           </form>
 
-          {/* Date range report (opens endpoints in new tab with browser auth prompt) */}
           <section style={styles.card}>
             <h2 style={styles.h2}>Date range report</h2>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
               <input
                 style={styles.input}
                 type="date"
                 id="rangeFrom"
-                defaultValue={new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
+                defaultValue={new Date(
+                  Date.now() - 6 * 24 * 3600 * 1000
+                )
+                  .toISOString()
+                  .slice(0, 10)}
               />
               <span>to</span>
               <input
@@ -313,7 +385,10 @@ export default function App() {
                 onClick={() => {
                   const from = document.getElementById("rangeFrom").value;
                   const to = document.getElementById("rangeTo").value;
-                  window.open(`${API_BASE}/report/range?from=${from}&to=${to}`, "_blank");
+                  window.open(
+                    `${API_BASE}/report/range?from=${from}&to=${to}`,
+                    "_blank"
+                  );
                 }}
                 style={styles.secondaryBtn}
               >
@@ -324,7 +399,10 @@ export default function App() {
                 onClick={() => {
                   const from = document.getElementById("rangeFrom").value;
                   const to = document.getElementById("rangeTo").value;
-                  window.open(`${API_BASE}/report/range.csv?from=${from}&to=${to}`, "_blank");
+                  window.open(
+                    `${API_BASE}/report/range.csv?from=${from}&to=${to}`,
+                    "_blank"
+                  );
                 }}
                 style={styles.secondaryBtn}
               >
@@ -334,15 +412,43 @@ export default function App() {
           </section>
 
           <section style={styles.card}>
-            <div style={styles.listHeader}>
-              <h2 style={styles.h2}>Recent payments</h2>
-              <button
-                onClick={fetchPayments}
-                style={styles.secondaryBtn}
-                disabled={loadingPayments}
-              >
-                {loadingPayments ? "Refreshing..." : "Refresh"}
-              </button>
+            <div style={{ ...styles.listHeader, alignItems: "end", gap: 8 }}>
+              <div>
+                <h2 style={styles.h2}>Recent payments</h2>
+                <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>
+                  Showing {filteredPayments.length} of {payments.length}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <select
+                  style={{ ...styles.input, maxWidth: 200 }}
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  title="Filter by status"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="waiting">Waiting</option>
+                  <option value="created">Created</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="failed">Failed/Error</option>
+                  <option value="other">Other</option>
+                </select>
+                <input
+                  style={{ ...styles.input, maxWidth: 260 }}
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search ID, email, order..."
+                />
+                <button
+                  onClick={fetchPayments}
+                  style={styles.secondaryBtn}
+                  disabled={loadingPayments}
+                >
+                  {loadingPayments ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
             </div>
 
             <div style={{ overflowX: "auto" }}>
@@ -359,111 +465,128 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.length === 0 && (
+                  {payments.length === 0 ? (
                     <tr>
                       <td colSpan={7} style={{ textAlign: "center", color: "#666" }}>
                         No payments yet.
                       </td>
                     </tr>
-                  )}
-                  {payments.map((row) => {
-                    const isConfirmed =
-                      String(row.state || row.status).toLowerCase() === "confirmed";
-                    return (
-                      <React.Fragment
-                        key={row.payment_id || row.created_at || Math.random()}
-                      >
-                        <tr>
-                          <td>{row.created_at || "—"}</td>
-                          <td>{row.order_id || "—"}</td>
-                          <td>
-                            {row.invoice_amount
-                              ? `${row.invoice_amount} ${row.invoice_currency}`
-                              : "—"}
-                          </td>
-                          <td>
-                            {row.crypto_amount
-                              ? `${row.crypto_amount} ${row.currency}`
-                              : "—"}
-                          </td>
-                          <td>
-                            <StatusPill status={row.state || row.status} />
-                          </td>
-                          <td>{row.customer_email || "—"}</td>
-                          <td>
-                            <button
-                              onClick={() => openEmailForm(row)}
-                              disabled={!row?.payment_id || !isConfirmed}
-                              style={styles.smallBtn}
-                              title={
-                                !row?.payment_id
-                                  ? "Unavailable"
-                                  : !isConfirmed
-                                  ? "Available after confirmation"
-                                  : "Send receipt"
-                              }
-                              data-testid="email-btn"
-                            >
-                              Email receipt
-                            </button>{" "}
-                            {row?.payment_id && (
-                              <a
-                                href={`${API_BASE}/receipt/${row.payment_id}/print`}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={styles.linkBtn}
-                              >
-                                Print
-                              </a>
-                            )}{" "}
-                            <button
-                              onClick={() => recheck(row.payment_id)}
-                              disabled={!row?.payment_id}
-                              style={styles.smallBtn}
-                              title="Re-check status with ForumPay"
-                              data-testid="recheck-btn"
-                            >
-                              Re-check
-                            </button>
-                          </td>
-                        </tr>
-
-                        {emailTargetId === row.payment_id && (
+                  ) : filteredPayments.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: "center", color: "#666" }}>
+                        No matches for your filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPayments.map((row) => {
+                      const isConfirmed =
+                        normStatus(row.state || row.status) === "confirmed";
+                      return (
+                        <React.Fragment
+                          key={row.payment_id || row.created_at || Math.random()}
+                        >
                           <tr>
-                            <td colSpan={7}>
-                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                <input
-                                  style={{ ...styles.input, maxWidth: 360 }}
-                                  type="email"
-                                  placeholder="name@example.com"
-                                  value={emailAddress}
-                                  onChange={(e) => setEmailAddress(e.target.value)}
-                                  data-testid="email-input"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={sendEmail}
-                                  disabled={sendingEmail || !emailAddress.trim()}
-                                  style={styles.smallBtn}
-                                  data-testid="email-send"
+                            <td>{row.created_at || "—"}</td>
+                            <td>{row.order_id || "—"}</td>
+                            <td>
+                              {row.invoice_amount
+                                ? `${row.invoice_amount} ${row.invoice_currency}`
+                                : "—"}
+                            </td>
+                            <td>
+                              {row.crypto_amount
+                                ? `${row.crypto_amount} ${row.currency}`
+                                : "—"}
+                            </td>
+                            <td>
+                              <StatusPill status={row.state || row.status} />
+                            </td>
+                            <td>{row.customer_email || "—"}</td>
+                            <td>
+                              <button
+                                onClick={() => openEmailForm(row)}
+                                disabled={!row?.payment_id || !isConfirmed}
+                                style={styles.smallBtn}
+                                title={
+                                  !row?.payment_id
+                                    ? "Unavailable"
+                                    : !isConfirmed
+                                    ? "Available after confirmation"
+                                    : "Send receipt"
+                                }
+                                data-testid="email-btn"
+                              >
+                                Email receipt
+                              </button>{" "}
+                              {row?.payment_id && (
+                                <a
+                                  href={`${API_BASE}/receipt/${row.payment_id}/print`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={styles.linkBtn}
                                 >
-                                  {sendingEmail ? "Sending..." : "Send"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={cancelEmailForm}
-                                  style={styles.secondaryBtn}
-                                  data-testid="email-cancel"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                                  Print
+                                </a>
+                              )}{" "}
+                              <button
+                                onClick={() => recheck(row.payment_id)}
+                                disabled={!row?.payment_id}
+                                style={styles.smallBtn}
+                                title="Re-check status with ForumPay"
+                                data-testid="recheck-btn"
+                              >
+                                Re-check
+                              </button>
                             </td>
                           </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+
+                          {emailTargetId === row.payment_id && (
+                            <tr>
+                              <td colSpan={7}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 8,
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <input
+                                    style={{ ...styles.input, maxWidth: 360 }}
+                                    type="email"
+                                    placeholder="name@example.com"
+                                    value={emailAddress}
+                                    onChange={(e) =>
+                                      setEmailAddress(e.target.value)
+                                    }
+                                    data-testid="email-input"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={sendEmail}
+                                    disabled={
+                                      sendingEmail || !emailAddress.trim()
+                                    }
+                                    style={styles.smallBtn}
+                                    data-testid="email-send"
+                                  >
+                                    {sendingEmail ? "Sending..." : "Send"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelEmailForm}
+                                    style={styles.secondaryBtn}
+                                    data-testid="email-cancel"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -471,7 +594,14 @@ export default function App() {
 
           <section style={styles.card}>
             <h2 style={styles.h2}>Daily report</h2>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <input
                 style={styles.input}
                 type="date"
