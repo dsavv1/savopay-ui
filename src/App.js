@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-29 19:40";
+const BUILD_TAG = "UI build: 2025-08-29 20:05";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -14,14 +14,31 @@ export default function App() {
     const v = parseInt(localStorage.getItem("tipPct") || "0", 10);
     return Number.isFinite(v) ? v : 0;
   });
+  const [tipMode, setTipMode] = useState(() => localStorage.getItem("tipMode") || "percent"); // 'percent' | 'amount'
+  const [tipFixed, setTipFixed] = useState(() => localStorage.getItem("tipFixed") || "");
   const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
   const [beepOn, setBeepOn] = useState(() => (localStorage.getItem("beepOn") !== "0"));
 
   useEffect(() => { localStorage.setItem("fiat", invoiceCurrency); }, [invoiceCurrency]);
   useEffect(() => { localStorage.setItem("crypto", cryptoCurrency); }, [cryptoCurrency]);
   useEffect(() => { localStorage.setItem("tipPct", String(tipPct)); }, [tipPct]);
+  useEffect(() => { localStorage.setItem("tipMode", tipMode); }, [tipMode]);
+  useEffect(() => { localStorage.setItem("tipFixed", tipFixed); }, [tipFixed]);
   useEffect(() => { localStorage.setItem("cashier", cashier); }, [cashier]);
   useEffect(() => { localStorage.setItem("beepOn", beepOn ? "1" : "0"); }, [beepOn]);
+
+  // Online/offline
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    function up() { setOnline(true); }
+    function down() { setOnline(false); }
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
 
   // Charge form
   const [amount, setAmount] = useState("25.00");
@@ -29,7 +46,8 @@ export default function App() {
   const [customerEmail, setCustomerEmail] = useState("");
 
   const base = safeNum(amount);
-  const tipAmount = round2((base * tipPct) / 100);
+  const usingFixed = tipMode === "amount" && safeNum(tipFixed) > 0;
+  const tipAmount = usingFixed ? round2(safeNum(tipFixed)) : round2((base * tipPct) / 100);
   const totalAmount = round2(base + tipAmount);
 
   const [starting, setStarting] = useState(false);
@@ -100,7 +118,9 @@ export default function App() {
       if (noMods && e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
       if (!typing && noMods && ["0", "1", "2", "3"].includes(e.key)) {
         const map = { "0": 0, "1": 10, "2": 15, "3": 20 };
-        setTipPct(map[e.key]); return;
+        setTipMode("percent");
+        setTipPct(map[e.key]);
+        return;
       }
       if (!typing && noMods && e.key.toLowerCase() === "r") { fetchPayments(); return; }
       if (!typing && noMods && e.key.toLowerCase() === "f") {
@@ -128,8 +148,9 @@ export default function App() {
         invoice_currency: invoiceCurrency,
         currency: cryptoCurrency,
         payer_id: payerId || "walk-in",
-        meta_tip_percent: tipPct,
+        meta_tip_percent: tipMode === "percent" ? tipPct : null,
         meta_tip_amount: tipAmount.toFixed(2),
+        meta_tip_mode: tipMode,
         meta_base_amount: base.toFixed(2),
         meta_cashier: cashier || null,
       };
@@ -158,6 +179,8 @@ export default function App() {
   function resetForm() {
     setAmount("25.00");
     setTipPct(0);
+    setTipMode("percent");
+    setTipFixed("");
     setPayerId("walk-in");
     setCustomerEmail("");
     setStartResult(null);
@@ -277,6 +300,7 @@ export default function App() {
         "cashier",
         "tip_amount",
         "tip_percent",
+        "tip_mode",
         "customer_email"
       ];
       const rows = filteredPayments.map((r) => ([
@@ -292,6 +316,7 @@ export default function App() {
         r.meta_cashier || "",
         toFixedOrEmpty(r.meta_tip_amount),
         r.meta_tip_percent != null ? String(r.meta_tip_percent) : "",
+        r.meta_tip_mode || "",
         r.customer_email || "",
       ]));
       const csv = [headers, ...rows].map(cols => cols.map(csvEscape).join(",")).join("\n");
@@ -313,6 +338,12 @@ export default function App() {
 
   return (
     <div style={styles.wrap} ref={appRef}>
+      {!online && (
+        <div style={styles.offlineBanner}>
+          You’re offline. New charges are disabled until connection is restored.
+        </div>
+      )}
+
       <div style={styles.headerRow}>
         <div>
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
@@ -384,15 +415,38 @@ export default function App() {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => setTipPct(p)}
-                  style={{ ...styles.segmentBtn, ...(tipPct === p ? styles.segmentBtnActive : {}) }}
+                  onClick={() => { setTipMode("percent"); setTipPct(p); }}
+                  style={{ ...styles.segmentBtn, ...(tipMode === "percent" && tipPct === p ? styles.segmentBtnActive : {}) }}
                 >
                   {p}%
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setTipMode("amount")}
+                style={{ ...styles.segmentBtn, ...(tipMode === "amount" ? styles.segmentBtnActive : {}) }}
+              >
+                Other
+              </button>
+              {tipMode === "amount" && (
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={tipFixed}
+                  onChange={(e) => setTipFixed(e.target.value)}
+                  placeholder="Enter tip amount"
+                  style={{ ...styles.input, maxWidth: 160 }}
+                />
+              )}
             </div>
+
             <div style={{ fontSize: 12, color: "#374151" }}>
-              Tip: <b>{fmt(tipAmount, invoiceCurrency)}</b> ({tipPct}%)
+              {tipMode === "amount" ? (
+                <>Tip: <b>{fmt(tipAmount, invoiceCurrency)}</b> (fixed)</>
+              ) : (
+                <>Tip: <b>{fmt(tipAmount, invoiceCurrency)}</b> ({tipPct}%)</>
+              )}
               {"  "}•{"  "}
               Total: <b>{fmt(totalAmount, invoiceCurrency)}</b>
             </div>
@@ -457,7 +511,7 @@ export default function App() {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="submit" style={styles.primaryBtn} disabled={starting}>
+          <button type="submit" style={styles.primaryBtn} disabled={starting || !online}>
             {starting ? "Creating..." : `Charge ${fmt(totalAmount, invoiceCurrency)}`}
           </button>
 
@@ -577,7 +631,7 @@ export default function App() {
                 const state = String(row.state || row.status || "").toLowerCase();
                 const isConfirmed = state === "confirmed";
                 const tipText = fixed2(row.meta_tip_amount)
-                  ? `${fixed2(row.meta_tip_amount)} ${row.invoice_currency}${row.meta_tip_percent != null ? ` (${row.meta_tip_percent}%)` : ""}`
+                  ? `${fixed2(row.meta_tip_amount)} ${row.invoice_currency}${row.meta_tip_percent != null ? ` (${row.meta_tip_percent}%)` : (row.meta_tip_mode ? ` (${row.meta_tip_mode})` : "")}`
                   : "—";
 
                 return (
@@ -815,6 +869,16 @@ async function copyToClipboard(text) {
 /* Styles */
 const styles = {
   wrap: { maxWidth: 980, margin: "24px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial" },
+  offlineBanner: {
+    background: "#fee2e2",
+    color: "#991b1b",
+    border: "1px solid #fecaca",
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    textAlign: "center",
+    fontWeight: 600,
+  },
   headerRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   h1: { margin: "0 0 8px 0", fontSize: 28 },
   h2: { margin: "0 0 8px 0", fontSize: 20 },
