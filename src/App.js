@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-29 19:10";
+const BUILD_TAG = "UI build: 2025-08-29 19:40";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -47,9 +47,13 @@ export default function App() {
 
   // Admin + filters
   const [showAdmin, setShowAdmin] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("all"); // all|created|waiting|confirmed|cancelled
-  const [searchTerm, setSearchTerm] = useState("");
-  const [onlyToday, setOnlyToday] = useState(false);
+  const [filterStatus, setFilterStatus] = useState(() => localStorage.getItem("filterStatus") || "all");
+  const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("searchTerm") || "");
+  const [onlyToday, setOnlyToday] = useState(() => localStorage.getItem("onlyToday") === "1");
+
+  useEffect(() => { localStorage.setItem("filterStatus", filterStatus); }, [filterStatus]);
+  useEffect(() => { localStorage.setItem("searchTerm", searchTerm); }, [searchTerm]);
+  useEffect(() => { localStorage.setItem("onlyToday", onlyToday ? "1" : "0"); }, [onlyToday]);
 
   // Refs
   const prevConfirmedRef = useRef(new Set());
@@ -201,7 +205,7 @@ export default function App() {
       alert(`Status: ${data.state || "unknown"}${data.confirmed ? " (confirmed)" : ""}`);
       fetchPayments();
     } catch (e) {
-      console.error("recheck error:", e);
+      console.error("recheck error", e);
       alert(`Re-check failed: ${e.message || e}`);
     }
   }
@@ -257,6 +261,55 @@ export default function App() {
   const confirmedCount = payments.filter(isConfirmedRow).length;
   const totalCount = payments.length;
   const confirmedTotals = sumConfirmedByFiat(filteredPayments);
+
+  function exportFilteredCsv() {
+    try {
+      const headers = [
+        "created_at",
+        "payment_id",
+        "order_id",
+        "invoice_amount",
+        "invoice_currency",
+        "crypto_amount",
+        "currency",
+        "state",
+        "status",
+        "cashier",
+        "tip_amount",
+        "tip_percent",
+        "customer_email"
+      ];
+      const rows = filteredPayments.map((r) => ([
+        r.created_at || "",
+        r.payment_id || "",
+        r.order_id || "",
+        toFixedOrEmpty(r.invoice_amount),
+        String(r.invoice_currency || "").toUpperCase(),
+        toFixedOrEmpty(r.crypto_amount),
+        r.currency || "",
+        r.state || "",
+        r.status || "",
+        r.meta_cashier || "",
+        toFixedOrEmpty(r.meta_tip_amount),
+        r.meta_tip_percent != null ? String(r.meta_tip_percent) : "",
+        r.customer_email || "",
+      ]));
+      const csv = [headers, ...rows].map(cols => cols.map(csvEscape).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const today = new Date().toISOString().slice(0,10);
+      a.download = `savopay_filtered_${today}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Failed to export CSV.");
+      console.error("exportFilteredCsv error:", e);
+    }
+  }
 
   return (
     <div style={styles.wrap} ref={appRef}>
@@ -453,6 +506,9 @@ export default function App() {
             <span style={styles.statText}>
               • Totals (confirmed): <b>{formatTotals(confirmedTotals)}</b>
             </span>
+            <button onClick={exportFilteredCsv} style={styles.secondaryBtn}>
+              Export filtered CSV
+            </button>
           </div>
         </div>
 
@@ -680,6 +736,10 @@ function fixed2(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n.toFixed(2) : null;
 }
+function toFixedOrEmpty(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(2) : "";
+}
 function isConfirmedRow(row) {
   return String(row?.state || row?.status || "").toLowerCase() === "confirmed";
 }
@@ -697,6 +757,11 @@ function sumConfirmedByFiat(rows) {
 function formatTotals(map) {
   const parts = Object.entries(map).map(([ccy, amt]) => `${amt.toFixed(2)} ${ccy}`);
   return parts.length ? parts.join(" • ") : "0.00";
+}
+function csvEscape(x) {
+  const s = String(x ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
 }
 async function requestNotify() {
   try {
