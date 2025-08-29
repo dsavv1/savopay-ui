@@ -3,18 +3,30 @@ import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-29 18:05";
+const BUILD_TAG = "UI build: 2025-08-29 18:25";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
+  // Saved prefs
+  const [invoiceCurrency, setInvoiceCurrency] = useState(() => localStorage.getItem("fiat") || "USD");
+  const [cryptoCurrency, setCryptoCurrency] = useState(() => localStorage.getItem("crypto") || "USDT");
+  const [tipPct, setTipPct] = useState(() => {
+    const v = parseInt(localStorage.getItem("tipPct") || "0", 10);
+    return Number.isFinite(v) ? v : 0;
+  });
+  const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
+  const [beepOn, setBeepOn] = useState(() => (localStorage.getItem("beepOn") !== "0"));
+
+  useEffect(() => { localStorage.setItem("fiat", invoiceCurrency); }, [invoiceCurrency]);
+  useEffect(() => { localStorage.setItem("crypto", cryptoCurrency); }, [cryptoCurrency]);
+  useEffect(() => { localStorage.setItem("tipPct", String(tipPct)); }, [tipPct]);
+  useEffect(() => { localStorage.setItem("cashier", cashier); }, [cashier]);
+  useEffect(() => { localStorage.setItem("beepOn", beepOn ? "1" : "0"); }, [beepOn]);
+
+  // Charge form
   const [amount, setAmount] = useState("25.00");
-  const [tipPct, setTipPct] = useState(0);
-  const [invoiceCurrency, setInvoiceCurrency] = useState("USD");
-  const [cryptoCurrency, setCryptoCurrency] = useState("USDT");
   const [payerId, setPayerId] = useState("walk-in");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
-  useEffect(() => { localStorage.setItem("cashier", cashier); }, [cashier]);
 
   const base = safeNum(amount);
   const tipAmount = round2((base * tipPct) / 100);
@@ -24,18 +36,21 @@ export default function App() {
   const [startResult, setStartResult] = useState(null);
   const [error, setError] = useState("");
 
+  // Data
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
+  // Email inline UI
   const [emailTargetId, setEmailTargetId] = useState(null);
   const [emailAddress, setEmailAddress] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  // Admin + filters
   const [showAdmin, setShowAdmin] = useState(false);
-
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all"); // all|created|waiting|confirmed|cancelled
   const [searchTerm, setSearchTerm] = useState("");
 
+  // New confirmations alerting
   const prevConfirmedRef = useRef(new Set());
 
   async function fetchPayments() {
@@ -44,6 +59,7 @@ export default function App() {
       const r = await fetch(`${API_BASE}/payments`);
       const data = await r.json();
       setPayments(Array.isArray(data) ? data : []);
+      // Alert on first-seen confirmations
       const prev = prevConfirmedRef.current;
       const nowConfirmed = (Array.isArray(data) ? data : []).filter(isConfirmedRow);
       for (const row of nowConfirmed) {
@@ -51,7 +67,7 @@ export default function App() {
         if (!prev.has(id)) {
           prev.add(id);
           notify("Payment confirmed", `ID: ${row.payment_id || "—"} • ${row.invoice_amount || ""} ${row.invoice_currency || ""}`);
-          beep();
+          if (beepOn) beep();
         }
       }
     } catch (e) {
@@ -94,10 +110,7 @@ export default function App() {
       const text = await resp.text();
       let json;
       try { json = JSON.parse(text); } catch { json = { raw: text }; }
-
-      if (!resp.ok) {
-        throw new Error((json && (json.error || json.detail)) || `HTTP ${resp.status}`);
-      }
+      if (!resp.ok) throw new Error((json && (json.error || json.detail)) || `HTTP ${resp.status}`);
 
       setStartResult(json);
       fetchPayments();
@@ -109,11 +122,19 @@ export default function App() {
     }
   }
 
+  function resetForm() {
+    setAmount("25.00");
+    setTipPct(0);
+    setPayerId("walk-in");
+    setCustomerEmail("");
+    setStartResult(null);
+    setError("");
+  }
+
   function openEmailForm(row) {
     setEmailTargetId(row.payment_id);
     setEmailAddress(row.customer_email || customerEmail || "");
   }
-
   function cancelEmailForm() {
     setEmailTargetId(null);
     setEmailAddress("");
@@ -121,10 +142,7 @@ export default function App() {
 
   async function sendEmail() {
     if (!emailTargetId) return;
-    if (!emailAddress.trim()) {
-      alert("Please enter an email address.");
-      return;
-    }
+    if (!emailAddress.trim()) { alert("Please enter an email address."); return; }
     try {
       setSendingEmail(true);
       const r = await fetch(`${API_BASE}/payments/${emailTargetId}/email`, {
@@ -132,16 +150,9 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to_email: emailAddress.trim() }),
       });
-
       const raw = await r.text();
-      let data;
-      try { data = JSON.parse(raw); } catch { data = { raw }; }
-
-      if (!r.ok) {
-        const msg = data?.error || data?.detail || `HTTP ${r.status}: ${String(raw).slice(0, 140)}`;
-        throw new Error(msg);
-      }
-
+      let data; try { data = JSON.parse(raw); } catch { data = { raw }; }
+      if (!r.ok) throw new Error(data?.error || data?.detail || `HTTP ${r.status}: ${String(raw).slice(0, 140)}`);
       alert(`Receipt sent to ${emailAddress.trim()}`);
       cancelEmailForm();
     } catch (e) {
@@ -170,18 +181,15 @@ export default function App() {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  // Filters + search
   const filteredPayments = payments.filter((row) => {
     const status = String(row.state || row.status || "").toLowerCase();
     if (filterStatus !== "all" && status !== filterStatus) return false;
     if (searchTerm.trim()) {
       const q = searchTerm.trim().toLowerCase();
-      const hay = [
-        row.payment_id,
-        row.order_id,
-        row.customer_email,
-        row.payer_id,
-        row.meta_cashier
-      ].map((s) => String(s || "").toLowerCase()).join(" ");
+      const hay = [row.payment_id, row.order_id, row.customer_email, row.payer_id, row.meta_cashier]
+        .map((s) => String(s || "").toLowerCase())
+        .join(" ");
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -197,11 +205,17 @@ export default function App() {
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
           <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>{BUILD_TAG}</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button style={styles.secondaryBtn} onClick={() => setBeepOn(b => !b)}>
+            {beepOn ? "Sound: On" : "Sound: Off"}
+          </button>
           <button style={styles.secondaryBtn} onClick={requestNotify}>
             Enable alerts
           </button>
-          <button style={styles.secondaryBtn} onClick={() => setShowAdmin((s) => !s)}>
+          <button style={styles.secondaryBtn} onClick={resetForm}>
+            New sale
+          </button>
+          <button style={styles.secondaryBtn} onClick={() => setShowAdmin(s => !s)}>
             {showAdmin ? "Close Admin" : "Open Admin"}
           </button>
         </div>
@@ -213,6 +227,7 @@ export default function App() {
         </section>
       )}
 
+      {/* Charge form */}
       <form onSubmit={handleStartPayment} style={styles.card}>
         <div style={styles.row}>
           <label style={styles.label}>Amount (before tip)</label>
@@ -357,6 +372,7 @@ export default function App() {
         )}
       </form>
 
+      {/* Payments list */}
       <section style={styles.card}>
         <div style={styles.listHeader}>
           <h2 style={styles.h2}>Recent payments</h2>
@@ -531,6 +547,7 @@ export default function App() {
         </div>
       </section>
 
+      {/* Daily report */}
       <section style={styles.card}>
         <h2 style={styles.h2}>Daily report</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -566,6 +583,7 @@ export default function App() {
   );
 }
 
+/* Helpers */
 function safeNum(v) {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
@@ -633,6 +651,7 @@ async function copyToClipboard(text) {
   }
 }
 
+/* Styles */
 const styles = {
   wrap: { maxWidth: 980, margin: "24px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial" },
   headerRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
