@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-27 17:30";
+const BUILD_TAG = "UI build: 2025-08-27 17:45";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -78,11 +78,7 @@ export default function App() {
 
       const text = await resp.text();
       let json;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = { raw: text };
-      }
+      try { json = JSON.parse(text); } catch { json = { raw: text }; }
 
       if (!resp.ok) {
         throw new Error((json && (json.error || json.detail)) || `HTTP ${resp.status}`);
@@ -304,11 +300,20 @@ export default function App() {
         {startResult && (
           <div style={styles.resultBox}>
             <div><b>Payment ID:</b> {startResult.payment_id}</div>
-            <div>
-              <b>Checkout URL:</b>{" "}
-              <a href={startResult.access_url} target="_blank" rel="noreferrer">
-                {startResult.access_url}
-              </a>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <b>Checkout URL:</b>{" "}
+                <a href={startResult.access_url} target="_blank" rel="noreferrer">
+                  {startResult.access_url}
+                </a>
+              </div>
+              <button
+                type="button"
+                style={styles.secondaryBtn}
+                onClick={() => copyToClipboard(startResult.access_url)}
+              >
+                Copy checkout link
+              </button>
             </div>
           </div>
         )}
@@ -394,6 +399,17 @@ export default function App() {
                         >
                           Re-check
                         </button>
+                        {" "}
+                        {row?.payment_id && (
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(`${API_BASE}/receipt/${encodeURIComponent(row.payment_id)}/print`)}
+                            style={styles.smallBtn}
+                            title="Copy receipt link"
+                          >
+                            Copy receipt
+                          </button>
+                        )}
                       </td>
                     </tr>
 
@@ -487,6 +503,20 @@ function fmt(n, ccy) {
 function fixed2(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n.toFixed(2) : null;
+}
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Copied to clipboard");
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    alert("Copied to clipboard");
+  }
 }
 
 const styles = {
