@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-27 17:22";
+const BUILD_TAG = "UI build: 2025-08-27 17:30";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -180,15 +180,29 @@ export default function App() {
       <form onSubmit={handleStartPayment} style={styles.card}>
         <div style={styles.row}>
           <label style={styles.label}>Amount (before tip)</label>
-          <input
-            style={styles.input}
-            type="number"
-            step="0.01"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-          />
+          <div style={{ flex: 1 }}>
+            <input
+              style={styles.input}
+              type="number"
+              step="0.01"
+              min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
+            <div style={{ margin: "8px 0 4px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["5.00","10.00","20.00","50.00"].map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setAmount(v)}
+                  style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
+                >
+                  {Number(v).toFixed(2)}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div style={{ ...styles.row, alignItems: "flex-start" }}>
