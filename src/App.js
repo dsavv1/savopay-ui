@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-27 17:45";
+const BUILD_TAG = "UI build: 2025-08-29 17:05";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -32,6 +32,10 @@ export default function App() {
   const [sendingEmail, setSendingEmail] = useState(false);
 
   const [showAdmin, setShowAdmin] = useState(false);
+
+  // New: filters
+  const [filterStatus, setFilterStatus] = useState("all"); // all | created | waiting | confirmed | cancelled
+  const [searchTerm, setSearchTerm] = useState("");
 
   async function fetchPayments() {
     try {
@@ -155,6 +159,27 @@ export default function App() {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  // New: apply filters/search
+  const filteredPayments = payments.filter((row) => {
+    const status = String(row.state || row.status || "").toLowerCase();
+    if (filterStatus !== "all" && status !== filterStatus) return false;
+    if (searchTerm.trim()) {
+      const q = searchTerm.trim().toLowerCase();
+      const hay = [
+        row.payment_id,
+        row.order_id,
+        row.customer_email,
+        row.payer_id,
+        row.meta_cashier
+      ].map((s) => String(s || "").toLowerCase()).join(" ");
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const confirmedCount = payments.filter((r) => String(r.state || r.status || "").toLowerCase() === "confirmed").length;
+  const totalCount = payments.length;
+
   return (
     <div style={styles.wrap}>
       <div style={styles.headerRow}>
@@ -162,7 +187,7 @@ export default function App() {
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
           <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>{BUILD_TAG}</div>
         </div>
-        <button style={styles.secondaryBtn} onClick={() => setShowAdmin(s => !s)}>
+        <button style={styles.secondaryBtn} onClick={() => setShowAdmin((s) => !s)}>
           {showAdmin ? "Close Admin" : "Open Admin"}
         </button>
       </div>
@@ -187,7 +212,7 @@ export default function App() {
               required
             />
             <div style={{ margin: "8px 0 4px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {["5.00","10.00","20.00","50.00"].map(v => (
+              {["5.00", "10.00", "20.00", "50.00"].map((v) => (
                 <button
                   key={v}
                   type="button"
@@ -205,7 +230,7 @@ export default function App() {
           <label style={styles.label}>Tip</label>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              {[0, 10, 15, 20].map(p => (
+              {[0, 10, 15, 20].map((p) => (
                 <button
                   key={p}
                   type="button"
@@ -322,9 +347,42 @@ export default function App() {
       <section style={styles.card}>
         <div style={styles.listHeader}>
           <h2 style={styles.h2}>Recent payments</h2>
-          <button onClick={fetchPayments} style={styles.secondaryBtn} disabled={loadingPayments}>
-            {loadingPayments ? "Refreshing..." : "Refresh"}
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={fetchPayments} style={styles.secondaryBtn} disabled={loadingPayments}>
+              {loadingPayments ? "Refreshing..." : "Refresh"}
+            </button>
+            <span style={styles.statText}>
+              Confirmed: <b>{confirmedCount}</b> • Total: <b>{totalCount}</b>
+            </span>
+          </div>
+        </div>
+
+        {/* New: Controls row */}
+        <div style={styles.controlsRow}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ fontWeight: 600 }}>Status</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              style={styles.input}
+            >
+              <option value="all">All</option>
+              <option value="created">Created</option>
+              <option value="waiting">Waiting</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ fontWeight: 600 }}>Search</label>
+            <input
+              style={styles.input}
+              type="text"
+              placeholder="payment id, order id, email, cashier…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -343,14 +401,14 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {payments.length === 0 && (
+              {filteredPayments.length === 0 && (
                 <tr>
                   <td colSpan={9} style={{ textAlign: "center", color: "#666" }}>
-                    No payments yet.
+                    No matching payments.
                   </td>
                 </tr>
               )}
-              {payments.map((row) => {
+              {filteredPayments.map((row) => {
                 const state = String(row.state || row.status || "").toLowerCase();
                 const isConfirmed = state === "confirmed";
                 const tipText = fixed2(row.meta_tip_amount)
@@ -359,7 +417,7 @@ export default function App() {
 
                 return (
                   <React.Fragment key={row.payment_id || row.created_at || Math.random()}>
-                    <tr>
+                    <tr style={isConfirmed ? styles.rowConfirmed : undefined}>
                       <td>{row.created_at || "—"}</td>
                       <td>{row.order_id || "—"}</td>
                       <td>{row.invoice_amount ? `${row.invoice_amount} ${row.invoice_currency}` : "—"}</td>
@@ -376,9 +434,8 @@ export default function App() {
                           style={styles.smallBtn}
                           data-testid="email-btn"
                         >
-                          Email receipt
-                        </button>
-                        {" "}
+                          Email
+                        </button>{" "}
                         {row?.payment_id && (
                           <a
                             href={`${API_BASE}/receipt/${encodeURIComponent(row.payment_id)}/print`}
@@ -388,8 +445,7 @@ export default function App() {
                           >
                             Print
                           </a>
-                        )}
-                        {" "}
+                        )}{" "}
                         <button
                           onClick={() => recheck(row.payment_id)}
                           disabled={!row?.payment_id}
@@ -398,8 +454,7 @@ export default function App() {
                           data-testid="recheck-btn"
                         >
                           Re-check
-                        </button>
-                        {" "}
+                        </button>{" "}
                         {row?.payment_id && (
                           <button
                             type="button"
@@ -408,6 +463,16 @@ export default function App() {
                             title="Copy receipt link"
                           >
                             Copy receipt
+                          </button>
+                        )}{" "}
+                        {row?.payment_id && (
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(row.payment_id)}
+                            style={styles.smallBtn}
+                            title="Copy payment ID"
+                          >
+                            Copy ID
                           </button>
                         )}
                       </td>
@@ -535,7 +600,13 @@ const styles = {
   error: { marginTop: 12, color: "#b91c1c", fontWeight: 600 },
   resultBox: { marginTop: 12, padding: 12, background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 8 },
   listHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+
+  controlsRow: { display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap" },
+  statText: { color: "#374151", fontSize: 13 },
+
   table: { width: "100%", borderCollapse: "collapse" },
   segmentBtn: { padding: "8px 12px", borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" },
   segmentBtnActive: { borderColor: "#111", background: "#111", color: "#fff" },
+
+  rowConfirmed: { background: "#f1fdf5" }, // light green tint for confirmed rows
 };
