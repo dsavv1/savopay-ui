@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-29 20:05";
+const BUILD_TAG = "UI build: 2025-08-29 20:30";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -18,6 +18,29 @@ export default function App() {
   const [tipFixed, setTipFixed] = useState(() => localStorage.getItem("tipFixed") || "");
   const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
   const [beepOn, setBeepOn] = useState(() => (localStorage.getItem("beepOn") !== "0"));
+  const [autoOpenCheckout, setAutoOpenCheckout] = useState(() => localStorage.getItem("autoOpenCheckout") === "1");
+
+  // Presets
+  const [quickAmts, setQuickAmts] = useState(() => {
+    const raw = localStorage.getItem("quickAmts");
+    if (!raw) return ["5.00", "10.00", "20.00", "50.00"];
+    try {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.length ? arr : ["5.00", "10.00", "20.00", "50.00"];
+    } catch {
+      return ["5.00", "10.00", "20.00", "50.00"];
+    }
+  });
+  const [tipPresets, setTipPresets] = useState(() => {
+    const raw = localStorage.getItem("tipPresets");
+    if (!raw) return [0, 10, 15, 20];
+    try {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.length ? arr : [0, 10, 15, 20];
+    } catch {
+      return [0, 10, 15, 20];
+    }
+  });
 
   useEffect(() => { localStorage.setItem("fiat", invoiceCurrency); }, [invoiceCurrency]);
   useEffect(() => { localStorage.setItem("crypto", cryptoCurrency); }, [cryptoCurrency]);
@@ -26,6 +49,9 @@ export default function App() {
   useEffect(() => { localStorage.setItem("tipFixed", tipFixed); }, [tipFixed]);
   useEffect(() => { localStorage.setItem("cashier", cashier); }, [cashier]);
   useEffect(() => { localStorage.setItem("beepOn", beepOn ? "1" : "0"); }, [beepOn]);
+  useEffect(() => { localStorage.setItem("autoOpenCheckout", autoOpenCheckout ? "1" : "0"); }, [autoOpenCheckout]);
+  useEffect(() => { localStorage.setItem("quickAmts", JSON.stringify(quickAmts)); }, [quickAmts]);
+  useEffect(() => { localStorage.setItem("tipPresets", JSON.stringify(tipPresets)); }, [tipPresets]);
 
   // Online/offline
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -65,6 +91,7 @@ export default function App() {
 
   // Admin + filters
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [filterStatus, setFilterStatus] = useState(() => localStorage.getItem("filterStatus") || "all");
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("searchTerm") || "");
   const [onlyToday, setOnlyToday] = useState(() => localStorage.getItem("onlyToday") === "1");
@@ -78,6 +105,7 @@ export default function App() {
   const searchRef = useRef(null);
   const amountRef = useRef(null);
   const appRef = useRef(null);
+  const autoOpenedRef = useRef(false);
 
   async function fetchPayments() {
     try {
@@ -108,6 +136,16 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
+  // Auto-open checkout once after start
+  useEffect(() => {
+    const url = startResult?.access_url;
+    if (autoOpenCheckout && url && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      try { window.open(url, "_blank", "noopener,noreferrer"); } catch {}
+    }
+    if (!url) autoOpenedRef.current = false;
+  }, [startResult, autoOpenCheckout]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e) {
@@ -117,7 +155,7 @@ export default function App() {
 
       if (noMods && e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
       if (!typing && noMods && ["0", "1", "2", "3"].includes(e.key)) {
-        const map = { "0": 0, "1": 10, "2": 15, "3": 20 };
+        const map = { "0": 0, "1": tipPresets[1] ?? 10, "2": tipPresets[2] ?? 15, "3": tipPresets[3] ?? 20 };
         setTipMode("percent");
         setTipPct(map[e.key]);
         return;
@@ -132,10 +170,11 @@ export default function App() {
         const btn = document.querySelector('button[type="submit"]'); btn?.click(); return;
       }
       if (!typing && noMods && e.key.toLowerCase() === "a") { amountRef.current?.focus(); return; }
+      if (!typing && noMods && e.key.toLowerCase() === "s") { setShowSettings((v) => !v); return; }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [filterStatus]);
+  }, [filterStatus, tipPresets]);
 
   async function handleStartPayment(e) {
     e.preventDefault();
@@ -238,6 +277,17 @@ export default function App() {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function openLastConfirmedReceipt() {
+    if (!payments.length) return alert("No payments yet.");
+    const confirmed = payments
+      .filter(isConfirmedRow)
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    if (!confirmed.length) return alert("No confirmed payments yet.");
+    const pid = confirmed[0].payment_id;
+    if (!pid) return alert("Missing payment id.");
+    window.open(`${API_BASE}/receipt/${encodeURIComponent(pid)}/print`, "_blank", "noopener,noreferrer");
+  }
+
   async function toggleFullscreen() {
     const el = appRef.current || document.documentElement;
     try {
@@ -254,9 +304,10 @@ export default function App() {
 `Shortcuts:
   /        Focus search
   a        Focus amount
-  0/1/2/3  Set tip 0/10/15/20%
+  0/1/2/3  Set tip 0/10/15/20 (from presets)
   r        Refresh list
   f        Cycle status filter
+  s        Toggle Settings
   ⌘/Ctrl+Enter  Charge`
     );
   }
@@ -353,6 +404,9 @@ export default function App() {
           <button style={styles.secondaryBtn} onClick={() => setBeepOn(b => !b)}>
             {beepOn ? "Sound: On" : "Sound: Off"}
           </button>
+          <button style={styles.secondaryBtn} onClick={() => setAutoOpenCheckout(v => !v)}>
+            {autoOpenCheckout ? "Auto-open: On" : "Auto-open: Off"}
+          </button>
           <button style={styles.secondaryBtn} onClick={requestNotify}>
             Enable alerts
           </button>
@@ -361,6 +415,12 @@ export default function App() {
           </button>
           <button style={styles.secondaryBtn} onClick={showShortcuts}>
             Shortcuts
+          </button>
+          <button style={styles.secondaryBtn} onClick={openLastConfirmedReceipt}>
+            Reprint last confirmed
+          </button>
+          <button style={styles.secondaryBtn} onClick={() => setShowSettings(true)}>
+            Settings
           </button>
           <button style={styles.secondaryBtn} onClick={resetForm}>
             New sale
@@ -393,14 +453,14 @@ export default function App() {
               required
             />
             <div style={{ margin: "8px 0 4px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {["5.00", "10.00", "20.00", "50.00"].map((v) => (
+              {quickAmts.map((v) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => setAmount(v)}
                   style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
                 >
-                  {Number(v).toFixed(2)}
+                  {Number(safeNum(v)).toFixed(2)}
                 </button>
               ))}
             </div>
@@ -411,14 +471,14 @@ export default function App() {
           <label style={styles.label}>Tip</label>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              {[0, 10, 15, 20].map((p) => (
+              {tipPresets.map((p) => (
                 <button
-                  key={p}
+                  key={`t${p}`}
                   type="button"
-                  onClick={() => { setTipMode("percent"); setTipPct(p); }}
-                  style={{ ...styles.segmentBtn, ...(tipMode === "percent" && tipPct === p ? styles.segmentBtnActive : {}) }}
+                  onClick={() => { setTipMode("percent"); setTipPct(Number(p) || 0); }}
+                  style={{ ...styles.segmentBtn, ...(tipMode === "percent" && tipPct === Number(p) ? styles.segmentBtnActive : {}) }}
                 >
-                  {p}%
+                  {Number(p)}%
                 </button>
               ))}
               <button
@@ -770,6 +830,115 @@ export default function App() {
           </button>
         </div>
       </section>
+
+      {showSettings && (
+        <SettingsModal
+          close={() => setShowSettings(false)}
+          quickAmts={quickAmts}
+          setQuickAmts={setQuickAmts}
+          tipPresets={tipPresets}
+          setTipPresets={setTipPresets}
+          beepOn={beepOn}
+          setBeepOn={setBeepOn}
+          autoOpenCheckout={autoOpenCheckout}
+          setAutoOpenCheckout={setAutoOpenCheckout}
+          invoiceCurrency={invoiceCurrency}
+          setInvoiceCurrency={setInvoiceCurrency}
+          cryptoCurrency={cryptoCurrency}
+          setCryptoCurrency={setCryptoCurrency}
+        />
+      )}
+    </div>
+  );
+}
+
+/* Settings Modal (inline component) */
+function SettingsModal({
+  close,
+  quickAmts, setQuickAmts,
+  tipPresets, setTipPresets,
+  beepOn, setBeepOn,
+  autoOpenCheckout, setAutoOpenCheckout,
+  invoiceCurrency, setInvoiceCurrency,
+  cryptoCurrency, setCryptoCurrency,
+}) {
+  const [amtsText, setAmtsText] = useState(quickAmts.join(", "));
+  const [tipsText, setTipsText] = useState(tipPresets.join(", "));
+
+  function save() {
+    const amts = amtsText.split(",").map(s => Number(safeNum(s.trim())).toFixed(2)).filter(x => Number(x) > 0);
+    const tips = tipsText.split(",").map(s => parseInt(String(s).trim(), 10)).filter(n => Number.isFinite(n));
+    if (amts.length) setQuickAmts(amts);
+    if (tips.length) setTipPresets(tips);
+    close();
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={close}>
+      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>Settings</h3>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Quick amounts</div>
+            <input
+              style={styles.input}
+              value={amtsText}
+              onChange={(e) => setAmtsText(e.target.value)}
+              placeholder="e.g. 5, 10, 20, 50"
+            />
+            <div style={styles.hint}>Comma-separated; shown as quick buttons under Amount.</div>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Tip presets (%)</div>
+            <input
+              style={styles.input}
+              value={tipsText}
+              onChange={(e) => setTipsText(e.target.value)}
+              placeholder="e.g. 0, 10, 15, 20"
+            />
+            <div style={styles.hint}>Comma-separated percentages; used for tip buttons.</div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ fontWeight: 600, width: 140 }}>Default fiat</label>
+            <select
+              style={{ ...styles.input, maxWidth: 160 }}
+              value={invoiceCurrency}
+              onChange={(e) => setInvoiceCurrency(e.target.value)}
+            >
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+            </select>
+
+            <label style={{ fontWeight: 600, width: 140 }}>Default crypto</label>
+            <select
+              style={{ ...styles.input, maxWidth: 180 }}
+              value={cryptoCurrency}
+              onChange={(e) => setCryptoCurrency(e.target.value)}
+            >
+              <option value="USDT">USDT (ERC20)</option>
+            </select>
+          </div>
+
+          <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={beepOn} onChange={(e) => setBeepOn(e.target.checked)} />
+            Sound on confirmation
+          </label>
+
+          <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={autoOpenCheckout} onChange={(e) => setAutoOpenCheckout(e.target.checked)} />
+            Auto-open checkout after creating payment
+          </label>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button style={styles.secondaryBtn} onClick={close}>Cancel</button>
+          <button style={styles.primaryBtn} onClick={save}>Save</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -899,4 +1068,13 @@ const styles = {
   segmentBtn: { padding: "8px 12px", borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" },
   segmentBtnActive: { borderColor: "#111", background: "#111", color: "#fff" },
   rowConfirmed: { background: "#f1fdf5" },
+  modalOverlay: {
+    position: "fixed", inset: 0, background: "rgba(0,0,0,.35)",
+    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50
+  },
+  modal: {
+    background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb",
+    width: "min(640px, 96vw)", padding: 16, boxShadow: "0 10px 30px rgba(0,0,0,.2)"
+  },
+  hint: { fontSize: 12, color: "#6b7280", marginTop: 4 },
 };
