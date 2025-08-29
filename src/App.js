@@ -4,7 +4,7 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-08-29 22:05";
+const BUILD_TAG = "UI build: 2025-08-29 22:20 • PROD";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -160,7 +160,7 @@ export default function App() {
     const ms = Math.max(2, refreshEverySec) * 1000;
     const t = setInterval(fetchPayments, ms);
     return () => clearInterval(t);
-  }, [autoRefresh, refreshEverySec]); // re-arm when settings change
+  }, [autoRefresh, refreshEverySec]);
 
   // Auto-open checkout once after start
   useEffect(() => {
@@ -433,7 +433,7 @@ export default function App() {
 
       <div style={styles.headerRow}>
         <div>
-          <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
+          <h1 style={styles.h1}>SavoPay POS</h1>
           <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>{BUILD_TAG}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -691,7 +691,7 @@ export default function App() {
       <section style={styles.card}>
         <div style={styles.listHeader}>
           <h2 style={styles.h2}>Recent payments</h2>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button onClick={fetchPayments} style={styles.secondaryBtn} disabled={loadingPayments}>
               {loadingPayments ? "Refreshing..." : "Refresh"}
             </button>
@@ -1215,7 +1215,7 @@ function monthStartISO() {
   return s.toISOString().slice(0,10);
 }
 
-/* Styles */
+/* Styles (polished for POS: larger tap targets) */
 const styles = {
   wrap: { maxWidth: 980, margin: "24px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial" },
   offlineBanner: {
@@ -1234,11 +1234,11 @@ const styles = {
   card: { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, marginBottom: 16, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
   row: { display: "flex", gap: 12, alignItems: "center", marginBottom: 12 },
   label: { width: 170, color: "#111", fontWeight: 600 },
-  input: { flex: 1, minWidth: 200, padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db" },
-  primaryBtn: { padding: "10px 14px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "#fff", cursor: "pointer" },
-  secondaryBtn: { display: "inline-block", padding: "10px 14px", borderRadius: 8, border: "1px solid #111", background: "#fff", color: "#111", cursor: "pointer" },
-  smallBtn: { padding: "6px 10px", borderRadius: 6, border: "1px solid #111", background: "#111", color: "#fff", cursor: "pointer" },
-  linkBtn: { padding: "6px 10px", borderRadius: 6, border: "1px solid #111", textDecoration: "none", color: "#111" },
+  input: { flex: 1, minWidth: 200, padding: "12px 14px", borderRadius: 10, border: "1px solid #d1d5db", fontSize: 16, minHeight: 44 },
+  primaryBtn: { padding: "12px 16px", borderRadius: 10, border: "1px solid #111", background: "#111", color: "#fff", cursor: "pointer", fontSize: 16, minHeight: 44 },
+  secondaryBtn: { display: "inline-block", padding: "12px 16px", borderRadius: 10, border: "1px solid #111", background: "#fff", color: "#111", cursor: "pointer", fontSize: 16, minHeight: 44 },
+  smallBtn: { padding: "8px 12px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "#fff", cursor: "pointer", fontSize: 14, minHeight: 36 },
+  linkBtn: { padding: "8px 12px", borderRadius: 8, border: "1px solid #111", textDecoration: "none", color: "#111", fontSize: 14, minHeight: 36, display: "inline-block" },
   error: { marginTop: 12, color: "#b91c1c", fontWeight: 600 },
   resultBox: { marginTop: 12, padding: 12, background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 8 },
   listHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
