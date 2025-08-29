@@ -2,8 +2,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
+import PinGate from "./components/PinGate.js";
 
-const BUILD_TAG = "UI build: 2025-08-29 20:30";
+const BUILD_TAG = "UI build: 2025-08-29 21:10";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -100,6 +101,11 @@ export default function App() {
   useEffect(() => { localStorage.setItem("searchTerm", searchTerm); }, [searchTerm]);
   useEffect(() => { localStorage.setItem("onlyToday", onlyToday ? "1" : "0"); }, [onlyToday]);
 
+  // PIN gate state
+  const [needsPinFor, setNeedsPinFor] = useState(null); // 'admin' | 'settings' | null
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [settingsUnlocked, setSettingsUnlocked] = useState(false);
+
   // Refs
   const prevConfirmedRef = useRef(new Set());
   const searchRef = useRef(null);
@@ -155,7 +161,7 @@ export default function App() {
 
       if (noMods && e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
       if (!typing && noMods && ["0", "1", "2", "3"].includes(e.key)) {
-        const map = { "0": 0, "1": tipPresets[1] ?? 10, "2": tipPresets[2] ?? 15, "3": tipPresets[3] ?? 20 };
+        const map = { "0": tipPresets[0] ?? 0, "1": tipPresets[1] ?? 10, "2": tipPresets[2] ?? 15, "3": tipPresets[3] ?? 20 };
         setTipMode("percent");
         setTipPct(map[e.key]);
         return;
@@ -419,13 +425,25 @@ export default function App() {
           <button style={styles.secondaryBtn} onClick={openLastConfirmedReceipt}>
             Reprint last confirmed
           </button>
-          <button style={styles.secondaryBtn} onClick={() => setShowSettings(true)}>
+          <button
+            style={styles.secondaryBtn}
+            onClick={() => {
+              if (!settingsUnlocked) setNeedsPinFor("settings");
+              else setShowSettings(true);
+            }}
+          >
             Settings
           </button>
           <button style={styles.secondaryBtn} onClick={resetForm}>
             New sale
           </button>
-          <button style={styles.secondaryBtn} onClick={() => setShowAdmin(s => !s)}>
+          <button
+            style={styles.secondaryBtn}
+            onClick={() => {
+              if (!adminUnlocked) setNeedsPinFor("admin");
+              else setShowAdmin((s) => !s);
+            }}
+          >
             {showAdmin ? "Close Admin" : "Open Admin"}
           </button>
         </div>
@@ -831,6 +849,24 @@ export default function App() {
         </div>
       </section>
 
+      {/* PIN gate overlay */}
+      {needsPinFor && (
+        <PinGate
+          onUnlock={() => {
+            if (needsPinFor === "admin") {
+              setAdminUnlocked(true);
+              setShowAdmin(true);
+            } else if (needsPinFor === "settings") {
+              setSettingsUnlocked(true);
+              setShowSettings(true);
+            }
+            setNeedsPinFor(null);
+          }}
+          onClose={() => setNeedsPinFor(null)}
+        />
+      )}
+
+      {/* Settings modal */}
       {showSettings && (
         <SettingsModal
           close={() => setShowSettings(false)}
@@ -864,12 +900,16 @@ function SettingsModal({
 }) {
   const [amtsText, setAmtsText] = useState(quickAmts.join(", "));
   const [tipsText, setTipsText] = useState(tipPresets.join(", "));
+  const [pinText, setPinText] = useState("");
 
   function save() {
     const amts = amtsText.split(",").map(s => Number(safeNum(s.trim())).toFixed(2)).filter(x => Number(x) > 0);
     const tips = tipsText.split(",").map(s => parseInt(String(s).trim(), 10)).filter(n => Number.isFinite(n));
     if (amts.length) setQuickAmts(amts);
     if (tips.length) setTipPresets(tips);
+    if (pinText.trim()) {
+      localStorage.setItem("adminPin", pinText.trim());
+    }
     close();
   }
 
@@ -932,6 +972,18 @@ function SettingsModal({
             <input type="checkbox" checked={autoOpenCheckout} onChange={(e) => setAutoOpenCheckout(e.target.checked)} />
             Auto-open checkout after creating payment
           </label>
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Admin PIN</div>
+            <input
+              style={styles.input}
+              type="password"
+              placeholder="Enter new PIN (leave blank to keep)"
+              value={pinText}
+              onChange={(e) => setPinText(e.target.value)}
+            />
+            <div style={styles.hint}>Default is 0000. Changing it updates this browser/device.</div>
+          </div>
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
