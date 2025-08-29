@@ -8,20 +8,18 @@ const BUILD_TAG = "UI build: 2025-08-29 21:10";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
-  // Saved prefs
   const [invoiceCurrency, setInvoiceCurrency] = useState(() => localStorage.getItem("fiat") || "USD");
   const [cryptoCurrency, setCryptoCurrency] = useState(() => localStorage.getItem("crypto") || "USDT");
   const [tipPct, setTipPct] = useState(() => {
     const v = parseInt(localStorage.getItem("tipPct") || "0", 10);
     return Number.isFinite(v) ? v : 0;
   });
-  const [tipMode, setTipMode] = useState(() => localStorage.getItem("tipMode") || "percent"); // 'percent' | 'amount'
+  const [tipMode, setTipMode] = useState(() => localStorage.getItem("tipMode") || "percent");
   const [tipFixed, setTipFixed] = useState(() => localStorage.getItem("tipFixed") || "");
   const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
   const [beepOn, setBeepOn] = useState(() => (localStorage.getItem("beepOn") !== "0"));
   const [autoOpenCheckout, setAutoOpenCheckout] = useState(() => localStorage.getItem("autoOpenCheckout") === "1");
 
-  // Presets
   const [quickAmts, setQuickAmts] = useState(() => {
     const raw = localStorage.getItem("quickAmts");
     if (!raw) return ["5.00", "10.00", "20.00", "50.00"];
@@ -54,7 +52,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem("quickAmts", JSON.stringify(quickAmts)); }, [quickAmts]);
   useEffect(() => { localStorage.setItem("tipPresets", JSON.stringify(tipPresets)); }, [tipPresets]);
 
-  // Online/offline
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
     function up() { setOnline(true); }
@@ -67,7 +64,6 @@ export default function App() {
     };
   }, []);
 
-  // Charge form
   const [amount, setAmount] = useState("25.00");
   const [payerId, setPayerId] = useState("walk-in");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -81,16 +77,13 @@ export default function App() {
   const [startResult, setStartResult] = useState(null);
   const [error, setError] = useState("");
 
-  // Data
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
-  // Email inline UI
   const [emailTargetId, setEmailTargetId] = useState(null);
   const [emailAddress, setEmailAddress] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  // Admin + filters
   const [showAdmin, setShowAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [filterStatus, setFilterStatus] = useState(() => localStorage.getItem("filterStatus") || "all");
@@ -101,17 +94,17 @@ export default function App() {
   useEffect(() => { localStorage.setItem("searchTerm", searchTerm); }, [searchTerm]);
   useEffect(() => { localStorage.setItem("onlyToday", onlyToday ? "1" : "0"); }, [onlyToday]);
 
-  // PIN gate state
-  const [needsPinFor, setNeedsPinFor] = useState(null); // 'admin' | 'settings' | null
+  const [needsPinFor, setNeedsPinFor] = useState(null);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [settingsUnlocked, setSettingsUnlocked] = useState(false);
 
-  // Refs
   const prevConfirmedRef = useRef(new Set());
   const searchRef = useRef(null);
   const amountRef = useRef(null);
   const appRef = useRef(null);
   const autoOpenedRef = useRef(false);
+
+  const [lastSync, setLastSync] = useState(null);
 
   async function fetchPayments() {
     try {
@@ -132,6 +125,7 @@ export default function App() {
     } catch (e) {
       console.error("fetchPayments error:", e);
     } finally {
+      setLastSync(new Date());
       setLoadingPayments(false);
     }
   }
@@ -142,7 +136,6 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  // Auto-open checkout once after start
   useEffect(() => {
     const url = startResult?.access_url;
     if (autoOpenCheckout && url && !autoOpenedRef.current) {
@@ -152,7 +145,6 @@ export default function App() {
     if (!url) autoOpenedRef.current = false;
   }, [startResult, autoOpenCheckout]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     function onKey(e) {
       const tag = (e.target && e.target.tagName) || "";
@@ -318,7 +310,6 @@ export default function App() {
     );
   }
 
-  // Filters + search (+ today-only)
   const filteredPayments = payments.filter((row) => {
     const status = String(row.state || row.status || "").toLowerCase();
     if (filterStatus !== "all" && status !== filterStatus) return false;
@@ -406,7 +397,22 @@ export default function App() {
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
           <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>{BUILD_TAG}</div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "2px 8px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+              background: online ? "#ecfdf5" : "#fef2f2", color: online ? "#065f46" : "#991b1b",
+              border: `1px solid ${online ? "#a7f3d0" : "#fecaca"}`
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: online ? "#065f46" : "#991b1b", display: "inline-block" }} />
+              {online ? "Online" : "Offline"}
+            </span>
+            <span style={{ fontSize: 12, color: "#374151" }}>
+              {lastSync ? `Last sync: ${lastSync.toLocaleTimeString()}` : "Last sync: —"}
+            </span>
+          </div>
+
           <button style={styles.secondaryBtn} onClick={() => setBeepOn(b => !b)}>
             {beepOn ? "Sound: On" : "Sound: Off"}
           </button>
@@ -455,7 +461,6 @@ export default function App() {
         </section>
       )}
 
-      {/* Charge form */}
       <form onSubmit={handleStartPayment} style={styles.card}>
         <div style={styles.row}>
           <label style={styles.label}>Amount (before tip)</label>
@@ -624,7 +629,6 @@ export default function App() {
         )}
       </form>
 
-      {/* Payments list */}
       <section style={styles.card}>
         <div style={styles.listHeader}>
           <h2 style={styles.h2}>Recent payments</h2>
@@ -816,7 +820,6 @@ export default function App() {
         </div>
       </section>
 
-      {/* Daily report */}
       <section style={styles.card}>
         <h2 style={styles.h2}>Daily report</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -849,7 +852,6 @@ export default function App() {
         </div>
       </section>
 
-      {/* PIN gate overlay */}
       {needsPinFor && (
         <PinGate
           onUnlock={() => {
@@ -866,7 +868,6 @@ export default function App() {
         />
       )}
 
-      {/* Settings modal */}
       {showSettings && (
         <SettingsModal
           close={() => setShowSettings(false)}
@@ -888,7 +889,6 @@ export default function App() {
   );
 }
 
-/* Settings Modal (inline component) */
 function SettingsModal({
   close,
   quickAmts, setQuickAmts,
@@ -995,7 +995,6 @@ function SettingsModal({
   );
 }
 
-/* Helpers */
 function safeNum(v) {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
@@ -1087,7 +1086,6 @@ async function copyToClipboard(text) {
   }
 }
 
-/* Styles */
 const styles = {
   wrap: { maxWidth: 980, margin: "24px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial" },
   offlineBanner: {
