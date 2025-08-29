@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-29 18:25";
+const BUILD_TAG = "UI build: 2025-08-29 18:45";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -50,8 +50,11 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState("all"); // all|created|waiting|confirmed|cancelled
   const [searchTerm, setSearchTerm] = useState("");
 
-  // New confirmations alerting
+  // Refs
   const prevConfirmedRef = useRef(new Set());
+  const searchRef = useRef(null);
+  const amountRef = useRef(null);
+  const appRef = useRef(null);
 
   async function fetchPayments() {
     try {
@@ -82,6 +85,58 @@ export default function App() {
     const t = setInterval(fetchPayments, 5000);
     return () => clearInterval(t);
   }, []);
+
+  // Keyboard shortcuts (POS speed)
+  useEffect(() => {
+    function onKey(e) {
+      const tag = (e.target && e.target.tagName) || "";
+      const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      const noMods = !e.metaKey && !e.ctrlKey && !e.altKey;
+
+      // Focus search
+      if (noMods && e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+
+      // Quick tips: 0/1/2/3 => 0/10/15/20%
+      if (!typing && noMods && ["0", "1", "2", "3"].includes(e.key)) {
+        const map = { "0": 0, "1": 10, "2": 15, "3": 20 };
+        setTipPct(map[e.key]);
+        return;
+      }
+
+      // Refresh list
+      if (!typing && noMods && e.key.toLowerCase() === "r") {
+        fetchPayments();
+        return;
+      }
+
+      // Cycle status filter
+      if (!typing && noMods && e.key.toLowerCase() === "f") {
+        const order = ["all", "created", "waiting", "confirmed", "cancelled"];
+        const idx = order.indexOf(filterStatus);
+        setFilterStatus(order[(idx + 1) % order.length]);
+        return;
+      }
+
+      // Submit charge: Cmd/Ctrl + Enter
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        const btn = document.querySelector('button[type="submit"]');
+        btn?.click();
+        return;
+      }
+
+      // Focus amount: a
+      if (!typing && noMods && e.key.toLowerCase() === "a") {
+        amountRef.current?.focus();
+        return;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filterStatus, fetchPayments]);
 
   async function handleStartPayment(e) {
     e.preventDefault();
@@ -129,6 +184,7 @@ export default function App() {
     setCustomerEmail("");
     setStartResult(null);
     setError("");
+    amountRef.current?.focus();
   }
 
   function openEmailForm(row) {
@@ -181,6 +237,29 @@ export default function App() {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  async function toggleFullscreen() {
+    const el = appRef.current || document.documentElement;
+    try {
+      if (!document.fullscreenElement) {
+        await el.requestFullscreen?.();
+      } else {
+        await document.exitFullscreen?.();
+      }
+    } catch {}
+  }
+
+  function showShortcuts() {
+    alert(
+`Shortcuts:
+  /        Focus search
+  a        Focus amount
+  0/1/2/3  Set tip 0/10/15/20%
+  r        Refresh list
+  f        Cycle status filter
+  ⌘/Ctrl+Enter  Charge`
+    );
+  }
+
   // Filters + search
   const filteredPayments = payments.filter((row) => {
     const status = String(row.state || row.status || "").toLowerCase();
@@ -199,7 +278,7 @@ export default function App() {
   const totalCount = payments.length;
 
   return (
-    <div style={styles.wrap}>
+    <div style={styles.wrap} ref={appRef}>
       <div style={styles.headerRow}>
         <div>
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
@@ -211,6 +290,12 @@ export default function App() {
           </button>
           <button style={styles.secondaryBtn} onClick={requestNotify}>
             Enable alerts
+          </button>
+          <button style={styles.secondaryBtn} onClick={toggleFullscreen}>
+            Fullscreen
+          </button>
+          <button style={styles.secondaryBtn} onClick={showShortcuts}>
+            Shortcuts
           </button>
           <button style={styles.secondaryBtn} onClick={resetForm}>
             New sale
@@ -233,6 +318,7 @@ export default function App() {
           <label style={styles.label}>Amount (before tip)</label>
           <div style={{ flex: 1 }}>
             <input
+              ref={amountRef}
               style={styles.input}
               type="number"
               step="0.01"
@@ -404,6 +490,7 @@ export default function App() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <label style={{ fontWeight: 600 }}>Search</label>
             <input
+              ref={searchRef}
               style={styles.input}
               type="text"
               placeholder="payment id, order id, email, cashier…"
