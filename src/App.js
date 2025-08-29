@@ -1,9 +1,9 @@
 // src/App.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-29 17:05";
+const BUILD_TAG = "UI build: 2025-08-29 18:05";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -33,9 +33,10 @@ export default function App() {
 
   const [showAdmin, setShowAdmin] = useState(false);
 
-  // New: filters
-  const [filterStatus, setFilterStatus] = useState("all"); // all | created | waiting | confirmed | cancelled
+  const [filterStatus, setFilterStatus] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+
+  const prevConfirmedRef = useRef(new Set());
 
   async function fetchPayments() {
     try {
@@ -43,6 +44,16 @@ export default function App() {
       const r = await fetch(`${API_BASE}/payments`);
       const data = await r.json();
       setPayments(Array.isArray(data) ? data : []);
+      const prev = prevConfirmedRef.current;
+      const nowConfirmed = (Array.isArray(data) ? data : []).filter(isConfirmedRow);
+      for (const row of nowConfirmed) {
+        const id = row.payment_id || row.order_id || JSON.stringify(row).slice(0, 40);
+        if (!prev.has(id)) {
+          prev.add(id);
+          notify("Payment confirmed", `ID: ${row.payment_id || "—"} • ${row.invoice_amount || ""} ${row.invoice_currency || ""}`);
+          beep();
+        }
+      }
     } catch (e) {
       console.error("fetchPayments error:", e);
     } finally {
@@ -159,7 +170,6 @@ export default function App() {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  // New: apply filters/search
   const filteredPayments = payments.filter((row) => {
     const status = String(row.state || row.status || "").toLowerCase();
     if (filterStatus !== "all" && status !== filterStatus) return false;
@@ -177,7 +187,7 @@ export default function App() {
     return true;
   });
 
-  const confirmedCount = payments.filter((r) => String(r.state || r.status || "").toLowerCase() === "confirmed").length;
+  const confirmedCount = payments.filter(isConfirmedRow).length;
   const totalCount = payments.length;
 
   return (
@@ -187,9 +197,14 @@ export default function App() {
           <h1 style={styles.h1}>SavoPay POS (Sandbox)</h1>
           <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>{BUILD_TAG}</div>
         </div>
-        <button style={styles.secondaryBtn} onClick={() => setShowAdmin((s) => !s)}>
-          {showAdmin ? "Close Admin" : "Open Admin"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={styles.secondaryBtn} onClick={requestNotify}>
+            Enable alerts
+          </button>
+          <button style={styles.secondaryBtn} onClick={() => setShowAdmin((s) => !s)}>
+            {showAdmin ? "Close Admin" : "Open Admin"}
+          </button>
+        </div>
       </div>
 
       {showAdmin && (
@@ -235,10 +250,7 @@ export default function App() {
                   key={p}
                   type="button"
                   onClick={() => setTipPct(p)}
-                  style={{
-                    ...styles.segmentBtn,
-                    ...(tipPct === p ? styles.segmentBtnActive : {})
-                  }}
+                  style={{ ...styles.segmentBtn, ...(tipPct === p ? styles.segmentBtnActive : {}) }}
                 >
                   {p}%
                 </button>
@@ -261,6 +273,7 @@ export default function App() {
           >
             <option value="USD">USD</option>
             <option value="EUR">EUR</option>
+            <option value="GBP">GBP</option>
           </select>
         </div>
 
@@ -357,7 +370,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* New: Controls row */}
         <div style={styles.controlsRow}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <label style={{ fontWeight: 600 }}>Status</label>
@@ -569,6 +581,43 @@ function fixed2(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n.toFixed(2) : null;
 }
+function isConfirmedRow(row) {
+  return String(row?.state || row?.status || "").toLowerCase() === "confirmed";
+}
+async function requestNotify() {
+  try {
+    if (!("Notification" in window)) return alert("Notifications not supported");
+    if (Notification.permission === "granted") return alert("Notifications already enabled");
+    const p = await Notification.requestPermission();
+    alert(p === "granted" ? "Notifications enabled" : "Notifications not enabled");
+  } catch {}
+}
+function notify(title, body) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    new Notification(title, { body });
+  } catch {}
+}
+function beep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 880;
+    o.connect(g);
+    g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.01);
+    o.start();
+    setTimeout(() => {
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
+      setTimeout(() => { o.stop(); ctx.close(); }, 180);
+    }, 120);
+  } catch {}
+}
 async function copyToClipboard(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -600,13 +649,10 @@ const styles = {
   error: { marginTop: 12, color: "#b91c1c", fontWeight: 600 },
   resultBox: { marginTop: 12, padding: 12, background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 8 },
   listHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-
   controlsRow: { display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap" },
   statText: { color: "#374151", fontSize: 13 },
-
   table: { width: "100%", borderCollapse: "collapse" },
   segmentBtn: { padding: "8px 12px", borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" },
   segmentBtnActive: { borderColor: "#111", background: "#111", color: "#fff" },
-
-  rowConfirmed: { background: "#f1fdf5" }, // light green tint for confirmed rows
+  rowConfirmed: { background: "#f1fdf5" },
 };
