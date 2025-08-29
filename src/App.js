@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 
-const BUILD_TAG = "UI build: 2025-08-29 18:45";
+const BUILD_TAG = "UI build: 2025-08-29 19:10";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -49,6 +49,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all"); // all|created|waiting|confirmed|cancelled
   const [searchTerm, setSearchTerm] = useState("");
+  const [onlyToday, setOnlyToday] = useState(false);
 
   // Refs
   const prevConfirmedRef = useRef(new Set());
@@ -62,7 +63,6 @@ export default function App() {
       const r = await fetch(`${API_BASE}/payments`);
       const data = await r.json();
       setPayments(Array.isArray(data) ? data : []);
-      // Alert on first-seen confirmations
       const prev = prevConfirmedRef.current;
       const nowConfirmed = (Array.isArray(data) ? data : []).filter(isConfirmedRow);
       for (const row of nowConfirmed) {
@@ -86,57 +86,32 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  // Keyboard shortcuts (POS speed)
+  // Keyboard shortcuts
   useEffect(() => {
     function onKey(e) {
       const tag = (e.target && e.target.tagName) || "";
       const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
       const noMods = !e.metaKey && !e.ctrlKey && !e.altKey;
 
-      // Focus search
-      if (noMods && e.key === "/") {
-        e.preventDefault();
-        searchRef.current?.focus();
-        return;
-      }
-
-      // Quick tips: 0/1/2/3 => 0/10/15/20%
+      if (noMods && e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
       if (!typing && noMods && ["0", "1", "2", "3"].includes(e.key)) {
         const map = { "0": 0, "1": 10, "2": 15, "3": 20 };
-        setTipPct(map[e.key]);
-        return;
+        setTipPct(map[e.key]); return;
       }
-
-      // Refresh list
-      if (!typing && noMods && e.key.toLowerCase() === "r") {
-        fetchPayments();
-        return;
-      }
-
-      // Cycle status filter
+      if (!typing && noMods && e.key.toLowerCase() === "r") { fetchPayments(); return; }
       if (!typing && noMods && e.key.toLowerCase() === "f") {
         const order = ["all", "created", "waiting", "confirmed", "cancelled"];
         const idx = order.indexOf(filterStatus);
-        setFilterStatus(order[(idx + 1) % order.length]);
-        return;
+        setFilterStatus(order[(idx + 1) % order.length]); return;
       }
-
-      // Submit charge: Cmd/Ctrl + Enter
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        const btn = document.querySelector('button[type="submit"]');
-        btn?.click();
-        return;
+        const btn = document.querySelector('button[type="submit"]'); btn?.click(); return;
       }
-
-      // Focus amount: a
-      if (!typing && noMods && e.key.toLowerCase() === "a") {
-        amountRef.current?.focus();
-        return;
-      }
+      if (!typing && noMods && e.key.toLowerCase() === "a") { amountRef.current?.focus(); return; }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [filterStatus, fetchPayments]);
+  }, [filterStatus]);
 
   async function handleStartPayment(e) {
     e.preventDefault();
@@ -163,8 +138,7 @@ export default function App() {
       });
 
       const text = await resp.text();
-      let json;
-      try { json = JSON.parse(text); } catch { json = { raw: text }; }
+      let json; try { json = JSON.parse(text); } catch { json = { raw: text }; }
       if (!resp.ok) throw new Error((json && (json.error || json.detail)) || `HTTP ${resp.status}`);
 
       setStartResult(json);
@@ -260,7 +234,7 @@ export default function App() {
     );
   }
 
-  // Filters + search
+  // Filters + search (+ today-only)
   const filteredPayments = payments.filter((row) => {
     const status = String(row.state || row.status || "").toLowerCase();
     if (filterStatus !== "all" && status !== filterStatus) return false;
@@ -271,11 +245,18 @@ export default function App() {
         .join(" ");
       if (!hay.includes(q)) return false;
     }
+    if (onlyToday) {
+      const createdISO = String(row.created_at || "");
+      const rowDay = createdISO.slice(0, 10);
+      const todayDay = new Date().toISOString().slice(0, 10);
+      if (rowDay !== todayDay) return false;
+    }
     return true;
   });
 
   const confirmedCount = payments.filter(isConfirmedRow).length;
   const totalCount = payments.length;
+  const confirmedTotals = sumConfirmedByFiat(filteredPayments);
 
   return (
     <div style={styles.wrap} ref={appRef}>
@@ -469,6 +450,9 @@ export default function App() {
             <span style={styles.statText}>
               Confirmed: <b>{confirmedCount}</b> • Total: <b>{totalCount}</b>
             </span>
+            <span style={styles.statText}>
+              • Totals (confirmed): <b>{formatTotals(confirmedTotals)}</b>
+            </span>
           </div>
         </div>
 
@@ -486,7 +470,17 @@ export default function App() {
               <option value="confirmed">Confirmed</option>
               <option value="cancelled">Cancelled</option>
             </select>
+
+            <label style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}>
+              <input
+                type="checkbox"
+                checked={onlyToday}
+                onChange={(e) => setOnlyToday(e.target.checked)}
+              />
+              Today only
+            </label>
           </div>
+
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <label style={{ fontWeight: 600 }}>Search</label>
             <input
@@ -688,6 +682,21 @@ function fixed2(v) {
 }
 function isConfirmedRow(row) {
   return String(row?.state || row?.status || "").toLowerCase() === "confirmed";
+}
+function sumConfirmedByFiat(rows) {
+  const out = {};
+  for (const r of rows) {
+    if (isConfirmedRow(r)) {
+      const ccy = String(r.invoice_currency || "").toUpperCase();
+      const amt = Number(r.invoice_amount);
+      if (Number.isFinite(amt) && ccy) out[ccy] = (out[ccy] || 0) + amt;
+    }
+  }
+  return out;
+}
+function formatTotals(map) {
+  const parts = Object.entries(map).map(([ccy, amt]) => `${amt.toFixed(2)} ${ccy}`);
+  return parts.length ? parts.join(" • ") : "0.00";
 }
 async function requestNotify() {
   try {
