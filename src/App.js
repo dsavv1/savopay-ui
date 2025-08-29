@@ -4,22 +4,24 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-08-29 21:40";
+const BUILD_TAG = "UI build: 2025-08-29 22:05";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
+  // Saved prefs
   const [invoiceCurrency, setInvoiceCurrency] = useState(() => localStorage.getItem("fiat") || "USD");
   const [cryptoCurrency, setCryptoCurrency] = useState(() => localStorage.getItem("crypto") || "USDT");
   const [tipPct, setTipPct] = useState(() => {
     const v = parseInt(localStorage.getItem("tipPct") || "0", 10);
     return Number.isFinite(v) ? v : 0;
   });
-  const [tipMode, setTipMode] = useState(() => localStorage.getItem("tipMode") || "percent");
+  const [tipMode, setTipMode] = useState(() => localStorage.getItem("tipMode") || "percent"); // 'percent' | 'amount'
   const [tipFixed, setTipFixed] = useState(() => localStorage.getItem("tipFixed") || "");
   const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
   const [beepOn, setBeepOn] = useState(() => (localStorage.getItem("beepOn") !== "0"));
   const [autoOpenCheckout, setAutoOpenCheckout] = useState(() => localStorage.getItem("autoOpenCheckout") === "1");
 
+  // Presets
   const [quickAmts, setQuickAmts] = useState(() => {
     const raw = localStorage.getItem("quickAmts");
     if (!raw) return ["5.00", "10.00", "20.00", "50.00"];
@@ -52,6 +54,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem("quickAmts", JSON.stringify(quickAmts)); }, [quickAmts]);
   useEffect(() => { localStorage.setItem("tipPresets", JSON.stringify(tipPresets)); }, [tipPresets]);
 
+  // Online/offline
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
     function up() { setOnline(true); }
@@ -64,6 +67,7 @@ export default function App() {
     };
   }, []);
 
+  // Charge form
   const [amount, setAmount] = useState("25.00");
   const [payerId, setPayerId] = useState("walk-in");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -77,33 +81,50 @@ export default function App() {
   const [startResult, setStartResult] = useState(null);
   const [error, setError] = useState("");
 
+  // Data
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
+  // Email inline UI
   const [emailTargetId, setEmailTargetId] = useState(null);
   const [emailAddress, setEmailAddress] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  // Admin + filters
   const [showAdmin, setShowAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [filterStatus, setFilterStatus] = useState(() => localStorage.getItem("filterStatus") || "all");
   const [searchTerm, setSearchTerm] = useState(() => localStorage.getItem("searchTerm") || "");
   const [onlyToday, setOnlyToday] = useState(() => localStorage.getItem("onlyToday") === "1");
+  const [filterCashier, setFilterCashier] = useState(() => localStorage.getItem("filterCashier") || "all");
 
   useEffect(() => { localStorage.setItem("filterStatus", filterStatus); }, [filterStatus]);
   useEffect(() => { localStorage.setItem("searchTerm", searchTerm); }, [searchTerm]);
   useEffect(() => { localStorage.setItem("onlyToday", onlyToday ? "1" : "0"); }, [onlyToday]);
+  useEffect(() => { localStorage.setItem("filterCashier", filterCashier); }, [filterCashier]);
 
-  const [needsPinFor, setNeedsPinFor] = useState(null);
+  // PIN gate state
+  const [needsPinFor, setNeedsPinFor] = useState(null); // 'admin' | 'settings' | null
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [settingsUnlocked, setSettingsUnlocked] = useState(false);
 
+  // Auto-refresh controls
+  const [autoRefresh, setAutoRefresh] = useState(() => (localStorage.getItem("autoRefresh") !== "0"));
+  const [refreshEverySec, setRefreshEverySec] = useState(() => {
+    const v = parseInt(localStorage.getItem("refreshEverySec") || "5", 10);
+    return Number.isFinite(v) ? v : 5;
+  });
+  useEffect(() => { localStorage.setItem("autoRefresh", autoRefresh ? "1" : "0"); }, [autoRefresh]);
+  useEffect(() => { localStorage.setItem("refreshEverySec", String(refreshEverySec)); }, [refreshEverySec]);
+
+  // Refs
   const prevConfirmedRef = useRef(new Set());
   const searchRef = useRef(null);
   const amountRef = useRef(null);
   const appRef = useRef(null);
   const autoOpenedRef = useRef(false);
 
+  // Status
   const [lastSync, setLastSync] = useState(null);
 
   async function fetchPayments() {
@@ -130,12 +151,18 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    fetchPayments();
-    const t = setInterval(fetchPayments, 5000);
-    return () => clearInterval(t);
-  }, []);
+  // Initial fetch on mount
+  useEffect(() => { fetchPayments(); }, []);
 
+  // Auto-refresh interval
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const ms = Math.max(2, refreshEverySec) * 1000;
+    const t = setInterval(fetchPayments, ms);
+    return () => clearInterval(t);
+  }, [autoRefresh, refreshEverySec]); // re-arm when settings change
+
+  // Auto-open checkout once after start
   useEffect(() => {
     const url = startResult?.access_url;
     if (autoOpenCheckout && url && !autoOpenedRef.current) {
@@ -145,6 +172,7 @@ export default function App() {
     if (!url) autoOpenedRef.current = false;
   }, [startResult, autoOpenCheckout]);
 
+  // Keyboard shortcuts
   useEffect(() => {
     function onKey(e) {
       const tag = (e.target && e.target.tagName) || "";
@@ -164,6 +192,7 @@ export default function App() {
         const idx = order.indexOf(filterStatus);
         setFilterStatus(order[(idx + 1) % order.length]); return;
       }
+      if (!typing && noMods && e.key.toLowerCase() === "p") { setAutoRefresh(v => !v); return; } // pause/resume
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         const btn = document.querySelector('button[type="submit"]'); btn?.click(); return;
       }
@@ -305,14 +334,24 @@ export default function App() {
   0/1/2/3  Set tip 0/10/15/20 (from presets)
   r        Refresh list
   f        Cycle status filter
+  p        Toggle auto-refresh
   s        Toggle Settings
   ⌘/Ctrl+Enter  Charge`
     );
   }
 
+  // Derived lists & filters
+  const cashierOptions = Array.from(
+    new Set(payments.map(p => (p.meta_cashier || "").trim()).filter(Boolean))
+  ).sort();
+
   const filteredPayments = payments.filter((row) => {
     const status = String(row.state || row.status || "").toLowerCase();
     if (filterStatus !== "all" && status !== filterStatus) return false;
+    if (filterCashier !== "all") {
+      const c = String(row.meta_cashier || "").trim();
+      if (c !== filterCashier) return false;
+    }
     if (searchTerm.trim()) {
       const q = searchTerm.trim().toLowerCase();
       const hay = [row.payment_id, row.order_id, row.customer_email, row.payer_id, row.meta_cashier]
@@ -336,7 +375,20 @@ export default function App() {
   function exportFilteredCsv() {
     try {
       const headers = [
-        "created_at","payment_id","order_id","invoice_amount","invoice_currency","crypto_amount","currency","state","status","cashier","tip_amount","tip_percent","tip_mode","customer_email"
+        "created_at",
+        "payment_id",
+        "order_id",
+        "invoice_amount",
+        "invoice_currency",
+        "crypto_amount",
+        "currency",
+        "state",
+        "status",
+        "cashier",
+        "tip_amount",
+        "tip_percent",
+        "tip_mode",
+        "customer_email"
       ];
       const rows = filteredPayments.map((r) => ([
         r.created_at || "",
@@ -371,15 +423,6 @@ export default function App() {
     }
   }
 
-  function todayISO() {
-    return new Date().toISOString().slice(0, 10);
-  }
-  function monthStartISO() {
-    const d = new Date();
-    const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
-    return s.toISOString().slice(0,10);
-  }
-
   return (
     <div style={styles.wrap} ref={appRef}>
       {!online && (
@@ -394,6 +437,7 @@ export default function App() {
           <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>{BUILD_TAG}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Online + last sync */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
             <span style={{
               display: "inline-flex", alignItems: "center", gap: 6,
@@ -407,6 +451,23 @@ export default function App() {
             <span style={{ fontSize: 12, color: "#374151" }}>
               {lastSync ? `Last sync: ${lastSync.toLocaleTimeString()}` : "Last sync: —"}
             </span>
+          </div>
+
+          {/* Auto-refresh controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, marginRight: 6 }}>Auto-refresh</label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
+              {autoRefresh ? "On" : "Off"}
+            </label>
+            <select
+              value={refreshEverySec}
+              onChange={(e) => setRefreshEverySec(parseInt(e.target.value || "5", 10) || 5)}
+              style={{ ...styles.input, width: 90 }}
+              disabled={!autoRefresh}
+            >
+              {[3,5,10,30,60].map(s => <option key={s} value={s}>{s}s</option>)}
+            </select>
           </div>
 
           <button style={styles.secondaryBtn} onClick={() => setBeepOn(b => !b)}>
@@ -457,6 +518,7 @@ export default function App() {
         </section>
       )}
 
+      {/* Charge form */}
       <form onSubmit={handleStartPayment} style={styles.card}>
         <div style={styles.row}>
           <label style={styles.label}>Amount (before tip)</label>
@@ -625,6 +687,7 @@ export default function App() {
         )}
       </form>
 
+      {/* Payments list */}
       <section style={styles.card}>
         <div style={styles.listHeader}>
           <h2 style={styles.h2}>Recent payments</h2>
@@ -657,6 +720,19 @@ export default function App() {
               <option value="waiting">Waiting</option>
               <option value="confirmed">Confirmed</option>
               <option value="cancelled">Cancelled</option>
+            </select>
+
+            {/* Cashier filter */}
+            <label style={{ fontWeight: 600, marginLeft: 8 }}>Cashier</label>
+            <select
+              value={filterCashier}
+              onChange={(e) => setFilterCashier(e.target.value)}
+              style={styles.input}
+            >
+              <option value="all">All</option>
+              {cashierOptions.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
 
             <label style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}>
@@ -816,6 +892,7 @@ export default function App() {
         </div>
       </section>
 
+      {/* Daily report */}
       <section style={styles.card}>
         <h2 style={styles.h2}>Daily report</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -848,6 +925,7 @@ export default function App() {
         </div>
       </section>
 
+      {/* Range report */}
       <section style={styles.card}>
         <h2 style={styles.h2}>Range report</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -891,6 +969,7 @@ export default function App() {
         </div>
       </section>
 
+      {/* PIN gate overlay */}
       {needsPinFor && (
         <PinGate
           onUnlock={() => {
@@ -907,6 +986,7 @@ export default function App() {
         />
       )}
 
+      {/* Settings modal */}
       {showSettings && (
         <SettingsModal
           close={() => setShowSettings(false)}
@@ -928,6 +1008,7 @@ export default function App() {
   );
 }
 
+/* Settings Modal (inline component) */
 function SettingsModal({
   close,
   quickAmts, setQuickAmts,
@@ -1034,6 +1115,7 @@ function SettingsModal({
   );
 }
 
+/* Helpers */
 function safeNum(v) {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
@@ -1125,6 +1207,15 @@ async function copyToClipboard(text) {
   }
 }
 
+// Dates
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function monthStartISO() {
+  const d = new Date();
+  const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  return s.toISOString().slice(0,10);
+}
+
+/* Styles */
 const styles = {
   wrap: { maxWidth: 980, margin: "24px auto", padding: "0 16px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial" },
   offlineBanner: {
