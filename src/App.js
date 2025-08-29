@@ -4,7 +4,7 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-08-29 21:10";
+const BUILD_TAG = "UI build: 2025-08-29 21:40";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 export default function App() {
@@ -336,20 +336,7 @@ export default function App() {
   function exportFilteredCsv() {
     try {
       const headers = [
-        "created_at",
-        "payment_id",
-        "order_id",
-        "invoice_amount",
-        "invoice_currency",
-        "crypto_amount",
-        "currency",
-        "state",
-        "status",
-        "cashier",
-        "tip_amount",
-        "tip_percent",
-        "tip_mode",
-        "customer_email"
+        "created_at","payment_id","order_id","invoice_amount","invoice_currency","crypto_amount","currency","state","status","cashier","tip_amount","tip_percent","tip_mode","customer_email"
       ];
       const rows = filteredPayments.map((r) => ([
         r.created_at || "",
@@ -382,6 +369,15 @@ export default function App() {
       alert("Failed to export CSV.");
       console.error("exportFilteredCsv error:", e);
     }
+  }
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function monthStartISO() {
+    const d = new Date();
+    const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+    return s.toISOString().slice(0,10);
   }
 
   return (
@@ -827,7 +823,7 @@ export default function App() {
             style={styles.input}
             type="date"
             id="reportDate"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={todayISO()}
           />
           <button
             type="button"
@@ -849,6 +845,49 @@ export default function App() {
           >
             Download CSV
           </button>
+        </div>
+      </section>
+
+      <section style={styles.card}>
+        <h2 style={styles.h2}>Range report</h2>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ fontWeight: 600 }}>Start</label>
+            <input style={styles.input} type="date" id="rangeStart" defaultValue={monthStartISO()} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ fontWeight: 600 }}>End</label>
+            <input style={styles.input} type="date" id="rangeEnd" defaultValue={todayISO()} />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const s = document.getElementById("rangeStart").value;
+              const e = document.getElementById("rangeEnd").value;
+              if (!s || !e) return alert("Pick start and end dates.");
+              if (s > e) return alert("Start must be before End.");
+              window.open(`${API_BASE}/report/range?start=${s}&end=${e}`, "_blank");
+            }}
+            style={styles.secondaryBtn}
+          >
+            View JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const s = document.getElementById("rangeStart").value;
+              const e = document.getElementById("rangeEnd").value;
+              if (!s || !e) return alert("Pick start and end dates.");
+              if (s > e) return alert("Start must be before End.");
+              window.open(`${API_BASE}/report/range.csv?start=${s}&end=${e}`, "_blank");
+            }}
+            style={styles.secondaryBtn}
+          >
+            Download CSV
+          </button>
+        </div>
+        <div style={{ marginTop: 8, color: "#6b7280", fontSize: 12 }}>
+          Dates are inclusive; timezone based on server.
         </div>
       </section>
 
