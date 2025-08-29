@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
-import PinGate from "./components/PinGate.js";
+import PinGate from "./components/PinGate";
 
 const BUILD_TAG = "UI build: 2025-08-29 21:10";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
