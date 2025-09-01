@@ -1,38 +1,250 @@
-:root{
-  --bg:#0b0f14; --surface:#121821; --card:#0f1520;
-  --text:#e6edf3; --muted:#9aa4b2;
-  --brand:#3b82f6; --success:#22c55e;
-  --radius:14px; --shadow:0 8px 20px rgba(0,0,0,.25);
+/* ===== SavoPay – Fintech Light Theme ===== */
+
+/* 1) Design tokens */
+:root.sp-theme {
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --elev: #ffffff;
+  --text: #0f172a;
+  --muted: #667085;
+  --border: #e5e7eb;
+
+  --accent: #2563eb;        /* primary */
+  --accent-600: #1d4ed8;
+  --accent-700: #1e40af;
+
+  --success: #16a34a;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.06);
+  --shadow-md: 0 6px 16px rgba(16,24,40,.08);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --gap-1: 6px;
+  --gap-2: 10px;
+  --gap-3: 14px;
+  --gap-4: 18px;
+  --gap-5: 24px;
+
+  --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
 }
 
-html,body,#root{height:100%}
-body{margin:0;background:linear-gradient(180deg,#0b0f14,#0b0f14 40%,#0d131d);
-  color:var(--text);font:14px/1.4 Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
-
-.wrapper{max-width:920px;margin:24px auto;padding:16px}
-.header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
-.brand .dot{width:8px;height:8px;border-radius:999px;background:var(--success);box-shadow:0 0 14px rgba(34,197,94,.7)}
-.badge{background:#0e1623;border:1px solid #1a2432;border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px}
-
-.card{background:var(--card);border:1px solid #1b2432;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
-.row{display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;margin:10px 0}
-.row .label{color:var(--muted);font-size:12px}
-.divider{height:1px;background:linear-gradient(90deg,transparent,#243246,transparent);margin:14px 0}
-
-input,select{
-  width:100%;background:#0c1320;border:1px solid #283245;color:var(--text);
-  border-radius:12px;padding:12px;outline:none;transition:.15s border,.15s box-shadow;
+/* 2) Base */
+html, body { height: 100%; }
+html.sp-theme, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-input:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+* { box-sizing: border-box; }
 
-.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid #283245;background:#0e1626;color:var(--text);cursor:pointer;transition:.15s transform,.15s background,.15s border}
-.btn:hover{background:#122033}
-.btn:active{transform:translateY(1px)}
-.btn.primary{background:linear-gradient(180deg,var(--brand),#2c66d7);border-color:#2c66d7;color:#fff}
+/* 3) Page shell */
+.sp-container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: grid;
+  gap: var(--gap-5);
+}
+@media (min-width: 1000px) {
+  .sp-container {
+    grid-template-columns: 480px 1fr; /* left: charge, right: activity */
+    align-items: start;
+  }
+}
 
-.tip-group{display:flex;gap:8px;flex-wrap:wrap}
-.chip{padding:8px 10px;border-radius:999px;border:1px solid #263248;background:#0c1422;color:var(--text);cursor:pointer}
-.chip.active{background:linear-gradient(180deg,#193053,#0f233f);border-color:#23406b}
+/* 4) Cards / sections */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.card-header {
+  padding: 16px 18px 0 18px;
+}
+.card-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+}
+.card-subtitle {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 10px 0;
+}
+.card-body {
+  padding: 18px;
+}
+.card + .card { margin-top: var(--gap-5); }
 
-@media (max-width:720px){ .row{grid-template-columns:1fr} .wrapper{padding:12px} }
+/* 5) Form layout */
+.form-grid {
+  display: grid;
+  gap: var(--gap-3);
+}
+.form-row {
+  display: grid;
+  gap: var(--gap-3);
+}
+@media (min-width: 640px) {
+  .form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+  .form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+/* 6) Inputs / selects */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+select,
+textarea {
+  width: 100%;
+  height: 40px;                 /* tighter */
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--text);
+  box-shadow: inset 0 0 0 rgba(0,0,0,0);
+  outline: none;
+  transition: box-shadow .12s ease, border-color .12s ease;
+}
+textarea { height: auto; min-height: 90px; padding: 10px 12px; }
+
+input::placeholder, textarea::placeholder { color: #98a2b3; }
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+}
+
+/* Remove spinner arrows from number input */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+input[type=number] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+
+/* 7) Amount + currency row (prevents overlap) */
+.amount-row {
+  display: grid;
+  gap: var(--gap-3);
+}
+@media (min-width: 520px) {
+  .amount-row { grid-template-columns: 1.2fr .8fr; }
+}
+
+/* 8) Buttons */
+.btn {
+  --btn-h: 40px;
+  height: var(--btn-h);
+  line-height: calc(var(--btn-h) - 2px);
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, transform .02s ease;
+}
+.btn:hover { background: #fafafa; }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn-primary:hover { background: var(--accent-600); border-color: var(--accent-600); }
+.btn-primary:active { background: var(--accent-700); border-color: var(--accent-700); }
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+.btn-ghost:hover { background: rgba(37,99,235,.08); }
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn-sm { --btn-h: 34px; font-size: 13px; padding: 0 12px; }
+.btn-lg { --btn-h: 46px; font-size: 15px; padding: 0 16px; }
+
+.btn-row {
+  display: flex; gap: var(--gap-3); flex-wrap: wrap;
+}
+
+/* 9) Tables (payments list) */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table th, .table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.table th { color: var(--muted); font-weight: 600; }
+.table tr:hover td { background: #fafbff; }
+
+/* 10) Pills / statuses */
+.badge { 
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; border: 1px solid var(--border);
+  color: var(--muted); background: #fff;
+}
+.badge.success { color: var(--success); border-color: rgba(22,163,74,.25); background: rgba(22,163,74,.06); }
+.badge.warn { color: var(--warn); border-color: rgba(245,158,11,.25); background: rgba(245,158,11,.08); }
+.badge.danger { color: var(--danger); border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.08); }
+
+/* 11) Headings / text rhythm */
+h1, h2, h3 { margin: 0 0 8px 0; line-height: 1.2; }
+h1 { font-size: 22px; }
+h2 { font-size: 18px; }
+p { margin: 0 0 10px 0; color: var(--muted); }
+
+/* 12) Utility spacing */
+.mt-2 { margin-top: var(--gap-2); }
+.mt-3 { margin-top: var(--gap-3); }
+.mt-4 { margin-top: var(--gap-4); }
+.mt-5 { margin-top: var(--gap-5); }
+.mb-2 { margin-bottom: var(--gap-2); }
+.mb-3 { margin-bottom: var(--gap-3); }
+.mb-4 { margin-bottom: var(--gap-4); }
+.mb-5 { margin-bottom: var(--gap-5); }
+
+/* 13) Links and tiny admin link */
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.admin-link {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+}
