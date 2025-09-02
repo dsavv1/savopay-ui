@@ -4,9 +4,14 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-09-02 16:05 • PROD";
+const BUILD_TAG = "UI build: 2025-09-02 16:30 • PROD";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 const CCY_PREFIX = { USD: "$", GBP: "£", EUR: "€", NGN: "₦" };
+
+const IS_PROD = typeof window !== "undefined" && /(^|\.)pos\.savopay\.co$/i.test(window.location.host);
+const SHOW_ADMIN_UI =
+  typeof window !== "undefined" &&
+  (!IS_PROD || localStorage.getItem("showAdminUI") === "1" || /\badmin=1\b/.test(window.location.search));
 
 export default function App() {
   const [invoiceCurrency, setInvoiceCurrency] = useState(() => localStorage.getItem("fiat") || "USD");
@@ -148,6 +153,10 @@ export default function App() {
   }, [startResult, autoOpenCheckout]);
 
   useEffect(() => {
+    if (IS_PROD) setAdminUnlocked(false);
+  }, []);
+
+  useEffect(() => {
     function onKey(e) {
       const tag = (e.target && e.target.tagName) || "";
       const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
@@ -272,6 +281,23 @@ export default function App() {
   ⌘/Ctrl+Enter  Charge`);
   }
 
+  const tapRef = useRef({ n: 0, t: 0 });
+  function secretTap() {
+    const now = Date.now();
+    if (now - tapRef.current.t > 3000) tapRef.current.n = 0;
+    tapRef.current.t = now;
+    tapRef.current.n += 1;
+    if (tapRef.current.n >= 5) {
+      localStorage.setItem("showAdminUI", "1");
+      window.location.reload();
+    }
+  }
+
+  function closeAdmin() {
+    setShowAdmin(false);
+    if (IS_PROD) setAdminUnlocked(false);
+  }
+
   const cashierOptions = Array.from(new Set(payments.map(p => (p.meta_cashier || "").trim()).filter(Boolean))).sort();
 
   const filteredPayments = payments.filter((row) => {
@@ -345,7 +371,7 @@ export default function App() {
 
       <header className="row" style={{ alignItems: "center", marginBottom: 16 }}>
         <div>
-          <h1>SavoPay POS</h1>
+          <h1 onClick={secretTap} style={{ cursor: IS_PROD ? "pointer" : "default" }}>SavoPay POS</h1>
           <div className="hint">{BUILD_TAG}</div>
         </div>
         <div className="input-group" style={{ flexWrap: "wrap" }}>
@@ -376,14 +402,23 @@ export default function App() {
           <button className="btn btn-ghost" onClick={showShortcuts}>Shortcuts</button>
           <button className="btn btn-ghost" onClick={openLastConfirmedReceipt}>Reprint last confirmed</button>
           <button className="btn btn-outline" onClick={() => { if (!settingsUnlocked) setNeedsPinFor("settings"); else setShowSettings(true); }}>Settings</button>
-          <button className="btn btn-outline" onClick={() => { if (!adminUnlocked) setNeedsPinFor("admin"); else setShowAdmin(s => !s); }}>{showAdmin ? "Close Admin" : "Open Admin"}</button>
+          {SHOW_ADMIN_UI && (
+            <button className="btn btn-outline" onClick={() => { if (!adminUnlocked) setNeedsPinFor("admin"); else setShowAdmin(s => !s); }}>
+              {showAdmin ? "Close Admin" : "Open Admin"}
+            </button>
+          )}
         </div>
       </header>
 
       {showAdmin && (
         <section className="card">
           <div className="card-header"><h2>Admin</h2></div>
-          <div className="card-body"><AdminPanel apiBase={API_BASE} /></div>
+          <div className="card-body">
+            <AdminPanel apiBase={API_BASE} />
+            <div className="card-footer" style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={closeAdmin}>Close</button>
+            </div>
+          </div>
         </section>
       )}
 
