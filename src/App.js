@@ -4,18 +4,15 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-09-02 15:40 • PROD";
+const BUILD_TAG = "UI build: 2025-09-02 16:05 • PROD";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
-
 const CCY_PREFIX = { USD: "$", GBP: "£", EUR: "€", NGN: "₦" };
 
 export default function App() {
   const [invoiceCurrency, setInvoiceCurrency] = useState(() => localStorage.getItem("fiat") || "USD");
   const [cryptoCurrency, setCryptoCurrency] = useState(() => localStorage.getItem("crypto") || "USDT");
-  const [tipPct, setTipPct] = useState(() => {
-    const v = parseInt(localStorage.getItem("tipPct") || "0", 10);
-    return Number.isFinite(v) ? v : 0;
-  });
+  const [network, setNetwork] = useState(() => localStorage.getItem("network") || "ERC20");
+  const [tipPct, setTipPct] = useState(() => { const v = parseInt(localStorage.getItem("tipPct") || "0", 10); return Number.isFinite(v) ? v : 0; });
   const [tipMode, setTipMode] = useState(() => localStorage.getItem("tipMode") || "percent");
   const [tipFixed, setTipFixed] = useState(() => localStorage.getItem("tipFixed") || "");
   const [cashier, setCashier] = useState(() => localStorage.getItem("cashier") || "");
@@ -37,6 +34,7 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem("fiat", invoiceCurrency); }, [invoiceCurrency]);
   useEffect(() => { localStorage.setItem("crypto", cryptoCurrency); }, [cryptoCurrency]);
+  useEffect(() => { localStorage.setItem("network", network); }, [network]);
   useEffect(() => { localStorage.setItem("tipPct", String(tipPct)); }, [tipPct]);
   useEffect(() => { localStorage.setItem("tipMode", tipMode); }, [tipMode]);
   useEffect(() => { localStorage.setItem("tipFixed", tipFixed); }, [tipFixed]);
@@ -52,10 +50,7 @@ export default function App() {
     const down = () => setOnline(false);
     window.addEventListener("online", up);
     window.addEventListener("offline", down);
-    return () => {
-      window.removeEventListener("online", up);
-      window.removeEventListener("offline", down);
-    };
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
   }, []);
 
   const [amount, setAmount] = useState("25.00");
@@ -191,6 +186,7 @@ export default function App() {
         meta_tip_mode: tipMode,
         meta_base_amount: base.toFixed(2),
         meta_cashier: cashier || null,
+        meta_network: network,
       };
       if (customerEmail.trim()) body.customer_email = customerEmail.trim();
       const resp = await fetch(`${API_BASE}/start-payment`, {
@@ -345,9 +341,7 @@ export default function App() {
 
   return (
     <div ref={appRef} className="app-shell">
-      {!online && (
-        <div className="toast">You’re offline. New charges are disabled until connection is restored.</div>
-      )}
+      {!online && (<div className="toast">You’re offline. New charges are disabled until connection is restored.</div>)}
 
       <header className="row" style={{ alignItems: "center", marginBottom: 16 }}>
         <div>
@@ -359,7 +353,6 @@ export default function App() {
             <span className={`status-dot ${online ? "status-ok" : "status-err"}`} />
             {online ? "Online" : "Offline"} • {lastSync ? `Last sync: ${lastSync.toLocaleTimeString()}` : "Last sync: —"}
           </div>
-
           <div className="badge">
             Auto-refresh
             <label className="input-group" style={{ marginLeft: 6 }}>
@@ -376,34 +369,21 @@ export default function App() {
               {[3,5,10,30,60].map(s => <option key={s} value={s}>{s}s</option>)}
             </select>
           </div>
-
           <button className="btn btn-ghost" onClick={() => setBeepOn(b => !b)}>{beepOn ? "Sound: On" : "Sound: Off"}</button>
           <button className="btn btn-ghost" onClick={() => setAutoOpenCheckout(v => !v)}>{autoOpenCheckout ? "Auto-open: On" : "Auto-open: Off"}</button>
           <button className="btn btn-ghost" onClick={requestNotify}>Enable alerts</button>
           <button className="btn btn-ghost" onClick={toggleFullscreen}>Fullscreen</button>
           <button className="btn btn-ghost" onClick={showShortcuts}>Shortcuts</button>
           <button className="btn btn-ghost" onClick={openLastConfirmedReceipt}>Reprint last confirmed</button>
-          <button
-            className="btn btn-outline"
-            onClick={() => { if (!settingsUnlocked) setNeedsPinFor("settings"); else setShowSettings(true); }}
-          >
-            Settings
-          </button>
-          <button
-            className="btn btn-outline"
-            onClick={() => { if (!adminUnlocked) setNeedsPinFor("admin"); else setShowAdmin(s => !s); }}
-          >
-            {showAdmin ? "Close Admin" : "Open Admin"}
-          </button>
+          <button className="btn btn-outline" onClick={() => { if (!settingsUnlocked) setNeedsPinFor("settings"); else setShowSettings(true); }}>Settings</button>
+          <button className="btn btn-outline" onClick={() => { if (!adminUnlocked) setNeedsPinFor("admin"); else setShowAdmin(s => !s); }}>{showAdmin ? "Close Admin" : "Open Admin"}</button>
         </div>
       </header>
 
       {showAdmin && (
         <section className="card">
           <div className="card-header"><h2>Admin</h2></div>
-          <div className="card-body">
-            <AdminPanel apiBase={API_BASE} />
-          </div>
+          <div className="card-body"><AdminPanel apiBase={API_BASE} /></div>
         </section>
       )}
 
@@ -493,13 +473,24 @@ export default function App() {
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
                 <option value="GBP">GBP</option>
+                <option value="NGN">NGN</option>
               </select>
             </div>
             <div>
               <label className="label">Crypto to receive</label>
               <select className="select" value={cryptoCurrency} onChange={(e) => setCryptoCurrency(e.target.value)}>
-                <option value="USDT">USDT (ERC20)</option>
+                <option value="USDT">USDT</option>
               </select>
+              {cryptoCurrency === "USDT" && (
+                <div className="input-group mt-3" style={{ flexWrap: "wrap", marginTop: 8 }}>
+                  <button type="button" className={`btn ${network === "ERC20" ? "btn-primary" : "btn-ghost"}`} onClick={() => setNetwork("ERC20")}>
+                    Network: ERC20
+                  </button>
+                  <button type="button" className={`btn ${network === "TRON" ? "btn-primary" : "btn-ghost"}`} onClick={() => setNetwork("TRON")}>
+                    Network: TRON
+                  </button>
+                </div>
+              )}
             </div>
             <div>
               <label className="label">Payer ID</label>
@@ -522,9 +513,7 @@ export default function App() {
             <button type="submit" className="btn btn-primary" disabled={starting || !online}>
               {starting ? "Creating..." : `Charge ${fmt(totalAmount, invoiceCurrency)}`}
             </button>
-            {startResult?.access_url && (
-              <button type="button" className="btn btn-outline" onClick={openCheckout}>Open checkout</button>
-            )}
+            {startResult?.access_url && (<button type="button" className="btn btn-outline" onClick={openCheckout}>Open checkout</button>)}
             <button type="button" className="btn btn-ghost" onClick={resetForm}>New sale</button>
           </div>
 
@@ -534,14 +523,13 @@ export default function App() {
             <div className="card" style={{ marginTop: 12 }}>
               <div className="card-body">
                 <div><b>Payment ID:</b> {startResult.payment_id}</div>
+                <div><b>Network:</b> {network}</div>
                 <div className="input-group" style={{ flexWrap: "wrap", marginTop: 8 }}>
                   <div>
                     <b>Checkout URL:</b>{" "}
                     <a href={startResult.access_url} target="_blank" rel="noreferrer">{startResult.access_url}</a>
                   </div>
-                  <button type="button" className="btn btn-ghost" onClick={() => copyToClipboard(startResult.access_url)}>
-                    Copy checkout link
-                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => copyToClipboard(startResult.access_url)}>Copy checkout link</button>
                 </div>
               </div>
             </div>
@@ -554,16 +542,13 @@ export default function App() {
           <div className="row" style={{ alignItems: "center" }}>
             <h2>Recent payments</h2>
             <div className="input-group" style={{ flexWrap: "wrap" }}>
-              <button onClick={fetchPayments} className="btn btn-ghost" disabled={loadingPayments}>
-                {loadingPayments ? "Refreshing..." : "Refresh"}
-              </button>
+              <button onClick={fetchPayments} className="btn btn-ghost" disabled={loadingPayments}>{loadingPayments ? "Refreshing..." : "Refresh"}</button>
               <span className="badge">Confirmed: <b style={{ marginLeft: 6 }}>{confirmedCount}</b> • Total: <b style={{ marginLeft: 6 }}>{totalCount}</b></span>
               <span className="badge">Totals (confirmed): <b style={{ marginLeft: 6 }}>{formatTotals(confirmedTotals)}</b></span>
               <button onClick={exportFilteredCsv} className="btn btn-outline">Export filtered CSV</button>
             </div>
           </div>
         </div>
-
         <div className="card-body">
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <div className="input-group" style={{ flexWrap: "wrap" }}>
@@ -575,19 +560,16 @@ export default function App() {
                 <option value="confirmed">Confirmed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
-
               <label className="label" style={{ marginLeft: 8, marginBottom: 0 }}>Cashier</label>
               <select value={filterCashier} onChange={(e) => setFilterCashier(e.target.value)} className="select">
                 <option value="all">All</option>
                 {cashierOptions.map(c => (<option key={c} value={c}>{c}</option>))}
               </select>
-
               <label className="label" style={{ marginLeft: 8, marginBottom: 0 }}>
                 <input type="checkbox" checked={onlyToday} onChange={(e) => setOnlyToday(e.target.checked)} style={{ marginRight: 6 }} />
                 Today only
               </label>
             </div>
-
             <div className="input-group" style={{ flexWrap: "wrap" }}>
               <label className="label" style={{ margin: 0 }}>Search</label>
               <input
@@ -617,9 +599,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {filteredPayments.length === 0 && (
-                  <tr><td colSpan={9} style={{ textAlign: "center", color: "var(--text-dim)" }}>No matching payments.</td></tr>
-                )}
+                {filteredPayments.length === 0 && (<tr><td colSpan={9} style={{ textAlign: "center", color: "var(--text-dim)" }}>No matching payments.</td></tr>)}
                 {filteredPayments.map((row) => {
                   const state = String(row.state || row.status || "").toLowerCase();
                   const isConfirmed = state === "confirmed";
@@ -639,88 +619,23 @@ export default function App() {
                         <td>{row.customer_email || "—"}</td>
                         <td>
                           <div className="input-group" style={{ flexWrap: "wrap" }}>
-                            <button
-                              onClick={() => openEmailForm(row)}
-                              disabled={!row?.payment_id || !isConfirmed}
-                              title={!row?.payment_id ? "Unavailable" : !isConfirmed ? "Available after confirmation" : "Send receipt"}
-                              className="btn btn-ghost"
-                              data-testid="email-btn"
-                            >
-                              Email
-                            </button>
+                            <button onClick={() => openEmailForm(row)} disabled={!row?.payment_id || !isConfirmed} title={!row?.payment_id ? "Unavailable" : !isConfirmed ? "Available after confirmation" : "Send receipt"} className="btn btn-ghost" data-testid="email-btn">Email</button>
                             {row?.payment_id && (
-                              <a
-                                href={`${API_BASE}/receipt/${encodeURIComponent(row.payment_id)}/print`}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                                className="btn btn-outline"
-                              >
-                                Print
-                              </a>
+                              <a href={`${API_BASE}/receipt/${encodeURIComponent(row.payment_id)}/print`} target="_blank" rel="noreferrer noopener" className="btn btn-outline">Print</a>
                             )}
-                            <button
-                              onClick={() => recheck(row.payment_id)}
-                              disabled={!row?.payment_id}
-                              className="btn btn-ghost"
-                              title="Re-check status with ForumPay"
-                              data-testid="recheck-btn"
-                            >
-                              Re-check
-                            </button>
-                            {row?.payment_id && (
-                              <button
-                                type="button"
-                                onClick={() => copyToClipboard(`${API_BASE}/receipt/${encodeURIComponent(row.payment_id)}/print`)}
-                                className="btn btn-ghost"
-                                title="Copy receipt link"
-                              >
-                                Copy receipt
-                              </button>
-                            )}
-                            {row?.payment_id && (
-                              <button
-                                type="button"
-                                onClick={() => copyToClipboard(row.payment_id)}
-                                className="btn btn-ghost"
-                                title="Copy payment ID"
-                              >
-                                Copy ID
-                              </button>
-                            )}
+                            <button onClick={() => recheck(row.payment_id)} disabled={!row?.payment_id} className="btn btn-ghost" title="Re-check status with ForumPay" data-testid="recheck-btn">Re-check</button>
+                            {row?.payment_id && (<button type="button" onClick={() => copyToClipboard(`${API_BASE}/receipt/${encodeURIComponent(row.payment_id)}/print`)} className="btn btn-ghost" title="Copy receipt link">Copy receipt</button>)}
+                            {row?.payment_id && (<button type="button" onClick={() => copyToClipboard(row.payment_id)} className="btn btn-ghost" title="Copy payment ID">Copy ID</button>)}
                           </div>
                         </td>
                       </tr>
-
                       {emailTargetId === row.payment_id && (
                         <tr>
                           <td colSpan={9}>
                             <div className="input-group" style={{ flexWrap: "wrap" }}>
-                              <input
-                                className="input"
-                                style={{ maxWidth: 360 }}
-                                type="email"
-                                placeholder="name@example.com"
-                                value={emailAddress}
-                                onChange={(e) => setEmailAddress(e.target.value)}
-                                data-testid="email-input"
-                              />
-                              <button
-                                type="button"
-                                onClick={sendEmail}
-                                disabled={sendingEmail || !emailAddress.trim()}
-                                className="btn btn-primary"
-                                data-testid="email-send"
-                              >
-                                {sendingEmail ? "Sending..." : "Send"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelEmailForm}
-                                className="btn btn-ghost"
-                                data-testid="email-cancel"
-                              >
-                                Cancel
-                              </button>
+                              <input className="input" style={{ maxWidth: 360 }} type="email" placeholder="name@example.com" value={emailAddress} onChange={(e) => setEmailAddress(e.target.value)} data-testid="email-input" />
+                              <button type="button" onClick={sendEmail} disabled={sendingEmail || !emailAddress.trim()} className="btn btn-primary" data-testid="email-send">{sendingEmail ? "Sending..." : "Send"}</button>
+                              <button type="button" onClick={cancelEmailForm} className="btn btn-ghost" data-testid="email-cancel">Cancel</button>
                             </div>
                           </td>
                         </tr>
@@ -738,14 +653,8 @@ export default function App() {
         <div className="card-header"><h2>Daily report</h2></div>
         <div className="card-body input-group" style={{ flexWrap: "wrap" }}>
           <input className="input" type="date" id="reportDate" defaultValue={todayISO()} />
-          <button type="button" onClick={() => {
-            const d = document.getElementById("reportDate").value;
-            window.open(`${API_BASE}/report/daily?date=${d}`, "_blank");
-          }} className="btn btn-ghost">View JSON</button>
-          <button type="button" onClick={() => {
-            const d = document.getElementById("reportDate").value;
-            window.open(`${API_BASE}/report/daily.csv?date=${d}`, "_blank");
-          }} className="btn btn-outline">Download CSV</button>
+          <button type="button" onClick={() => { const d = document.getElementById("reportDate").value; window.open(`${API_BASE}/report/daily?date=${d}`, "_blank"); }} className="btn btn-ghost">View JSON</button>
+          <button type="button" onClick={() => { const d = document.getElementById("reportDate").value; window.open(`${API_BASE}/report/daily.csv?date=${d}`, "_blank"); }} className="btn btn-outline">Download CSV</button>
         </div>
       </section>
 
@@ -800,6 +709,7 @@ export default function App() {
           autoOpenCheckout={autoOpenCheckout} setAutoOpenCheckout={setAutoOpenCheckout}
           invoiceCurrency={invoiceCurrency} setInvoiceCurrency={setInvoiceCurrency}
           cryptoCurrency={cryptoCurrency} setCryptoCurrency={setCryptoCurrency}
+          network={network} setNetwork={setNetwork}
         />
       )}
     </div>
@@ -814,6 +724,7 @@ function SettingsModal({
   autoOpenCheckout, setAutoOpenCheckout,
   invoiceCurrency, setInvoiceCurrency,
   cryptoCurrency, setCryptoCurrency,
+  network, setNetwork,
 }) {
   const [amtsText, setAmtsText] = useState(quickAmts.join(", "));
   const [tipsText, setTipsText] = useState(tipPresets.join(", "));
@@ -829,10 +740,7 @@ function SettingsModal({
   }
 
   return (
-    <div className="modalOverlay" style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.35)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50
-    }} onClick={close}>
+    <div className="modalOverlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={close}>
       <div className="card" style={{ width: "min(720px, 96vw)" }} onClick={(e) => e.stopPropagation()}>
         <div className="card-header"><h2>Settings</h2></div>
         <div className="card-body row">
@@ -855,18 +763,21 @@ function SettingsModal({
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
                 <option value="GBP">GBP</option>
+                <option value="NGN">NGN</option>
               </select>
             </div>
             <div>
               <div className="label" style={{ marginBottom: 6 }}>Default crypto</div>
               <select className="select" value={cryptoCurrency} onChange={(e) => setCryptoCurrency(e.target.value)}>
-                <option value="USDT">USDT (ERC20)</option>
+                <option value="USDT">USDT</option>
               </select>
             </div>
             <div>
-              <div className="label" style={{ marginBottom: 6 }}>Admin PIN</div>
-              <input className="input" type="password" placeholder="Enter new PIN (leave blank to keep)" value={pinText} onChange={(e) => setPinText(e.target.value)} />
-              <div className="hint">Default is 0000. Changing it updates this browser/device.</div>
+              <div className="label" style={{ marginBottom: 6 }}>Default network</div>
+              <div className="input-group">
+                <button type="button" className={`btn ${network === "ERC20" ? "btn-primary" : "btn-ghost"}`} onClick={() => setNetwork("ERC20")}>ERC20</button>
+                <button type="button" className={`btn ${network === "TRON" ? "btn-primary" : "btn-ghost"}`} onClick={() => setNetwork("TRON")}>TRON</button>
+              </div>
             </div>
           </div>
 
@@ -877,8 +788,13 @@ function SettingsModal({
           <label className="label" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
             <input type="checkbox" checked={autoOpenCheckout} onChange={(e) => setAutoOpenCheckout(e.target.checked)} /> Auto-open checkout after creating payment
           </label>
-        </div>
 
+          <div>
+            <div className="label" style={{ marginBottom: 6 }}>Admin PIN</div>
+            <input className="input" type="password" placeholder="Enter new PIN (leave blank to keep)" value={pinText} onChange={(e) => setPinText(e.target.value)} />
+            <div className="hint">Default is 0000. Changing it updates this browser/device.</div>
+          </div>
+        </div>
         <div className="card-footer" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button className="btn btn-ghost" onClick={close}>Cancel</button>
           <button className="btn btn-primary" onClick={save}>Save</button>
@@ -888,62 +804,18 @@ function SettingsModal({
   );
 }
 
-/* Helpers */
 function safeNum(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
 function round2(n) { return Math.round(n * 100) / 100; }
 function fmt(n, ccy) { const s = Number.isFinite(n) ? n.toFixed(2) : "0.00"; return `${s} ${ccy}`; }
 function fixed2(v) { const n = Number(v); return Number.isFinite(n) ? n.toFixed(2) : null; }
 function toFixedOrEmpty(v) { const n = Number(v); return Number.isFinite(n) ? n.toFixed(2) : ""; }
 function isConfirmedRow(row) { return String(row?.state || row?.status || "").toLowerCase() === "confirmed"; }
-function sumConfirmedByFiat(rows) {
-  const out = {};
-  for (const r of rows) {
-    if (isConfirmedRow(r)) {
-      const ccy = String(r.invoice_currency || "").toUpperCase();
-      const amt = Number(r.invoice_amount);
-      if (Number.isFinite(amt) && ccy) out[ccy] = (out[ccy] || 0) + amt;
-    }
-  }
-  return out;
-}
+function sumConfirmedByFiat(rows) { const out = {}; for (const r of rows) { if (isConfirmedRow(r)) { const ccy = String(r.invoice_currency || "").toUpperCase(); const amt = Number(r.invoice_amount); if (Number.isFinite(amt) && ccy) out[ccy] = (out[ccy] || 0) + amt; } } return out; }
 function formatTotals(map) { const parts = Object.entries(map).map(([ccy, amt]) => `${amt.toFixed(2)} ${ccy}`); return parts.length ? parts.join(" • ") : "0.00"; }
 function csvEscape(x) { const s = String(x ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
-async function requestNotify() {
-  try {
-    if (!("Notification" in window)) return alert("Notifications not supported");
-    if (Notification.permission === "granted") return alert("Notifications already enabled");
-    const p = await Notification.requestPermission();
-    alert(p === "granted" ? "Notifications enabled" : "Notifications not enabled");
-  } catch {}
-}
+async function requestNotify() { try { if (!("Notification" in window)) return alert("Notifications not supported"); if (Notification.permission === "granted") return alert("Notifications already enabled"); const p = await Notification.requestPermission(); alert(p === "granted" ? "Notifications enabled" : "Notifications not enabled"); } catch {} }
 function notify(title, body) { try { if (!("Notification" in window) || Notification.permission !== "granted") return; new Notification(title, { body }); } catch {} }
-function beep() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = "sine"; o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.01);
-    o.start();
-    setTimeout(() => {
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
-      setTimeout(() => { o.stop(); ctx.close(); }, 180);
-    }, 120);
-  } catch {}
-}
-async function copyToClipboard(text) {
-  try { await navigator.clipboard.writeText(text); alert("Copied to clipboard"); }
-  catch {
-    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
-    ta.select(); document.execCommand("copy"); document.body.removeChild(ta); alert("Copied to clipboard");
-  }
-}
+function beep() { try { const Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return; const ctx = new Ctx(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.type = "sine"; o.frequency.value = 880; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.01); o.start(); setTimeout(() => { g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15); setTimeout(() => { o.stop(); ctx.close(); }, 180); }, 120); } catch {} }
+async function copyToClipboard(text) { try { await navigator.clipboard.writeText(text); alert("Copied to clipboard"); } catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); alert("Copied to clipboard"); } }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
-function monthStartISO() {
-  const d = new Date();
-  const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
-  return s.toISOString().slice(0,10);
-}
+function monthStartISO() { const d = new Date(); const s = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); return s.toISOString().slice(0,10); }
