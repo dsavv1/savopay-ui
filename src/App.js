@@ -4,7 +4,7 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-09-02 16:30 • PROD";
+const BUILD_TAG = "UI build: 2025-09-02 17:05 • PROD";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 const CCY_PREFIX = { USD: "$", GBP: "£", EUR: "€", NGN: "₦" };
 
@@ -106,7 +106,6 @@ export default function App() {
   const searchRef = useRef(null);
   const amountRef = useRef(null);
   const appRef = useRef(null);
-  const autoOpenedRef = useRef(false);
 
   const [lastSync, setLastSync] = useState(null);
 
@@ -136,21 +135,7 @@ export default function App() {
 
   useEffect(() => { fetchPayments(); }, []);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const ms = Math.max(2, refreshEverySec) * 1000;
-    const t = setInterval(fetchPayments, ms);
-    return () => clearInterval(t);
-  }, [autoRefresh, refreshEverySec]);
-
-  useEffect(() => {
-    const url = startResult?.access_url;
-    if (autoOpenCheckout && url && !autoOpenedRef.current) {
-      autoOpenedRef.current = true;
-      try { window.open(url, "_blank", "noopener,noreferrer"); } catch {}
-    }
-    if (!url) autoOpenedRef.current = false;
-  }, [startResult, autoOpenCheckout]);
+  // NOTE: removed previous auto-open useEffect; we now open a placeholder window synchronously in the submit handler (popup-safe)
 
   useEffect(() => {
     if (IS_PROD) setAdminUnlocked(false);
@@ -184,6 +169,15 @@ export default function App() {
   async function handleStartPayment(e) {
     e.preventDefault();
     setError(""); setStartResult(null); setStarting(true);
+
+    // Popup-blocker-safe strategy: open a placeholder tab synchronously on user click
+    let checkoutWin = null;
+    if (autoOpenCheckout) {
+      try {
+        checkoutWin = window.open("about:blank", "_blank", "noopener,noreferrer");
+      } catch {}
+    }
+
     try {
       const body = {
         invoice_amount: totalAmount.toFixed(2),
@@ -204,10 +198,26 @@ export default function App() {
       const text = await resp.text();
       let json; try { json = JSON.parse(text); } catch { json = { raw: text }; }
       if (!resp.ok) throw new Error((json && (json.error || json.detail)) || `HTTP ${resp.status}`);
-      setStartResult(json); fetchPayments();
+
+      setStartResult(json);
+      fetchPayments();
+
+      const url = json?.access_url;
+      if (url && autoOpenCheckout) {
+        if (checkoutWin && !checkoutWin.closed) {
+          try { checkoutWin.location = url; checkoutWin.focus?.(); } catch {}
+        } else {
+          try { window.open(url, "_blank", "noopener,noreferrer"); } catch {}
+        }
+      }
     } catch (e) {
-      console.error("handleStartPayment error:", e); setError(String(e.message || e));
-    } finally { setStarting(false); }
+      console.error("handleStartPayment error:", e);
+      setError(String(e.message || e));
+      // If we opened a blank tab but failed, close it to avoid orphan tabs
+      try { if (checkoutWin && !checkoutWin.closed) checkoutWin.close(); } catch {}
+    } finally {
+      setStarting(false);
+    }
   }
 
   function resetForm() {
