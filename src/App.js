@@ -4,7 +4,7 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-09-02 17:20 • PROD";
+const BUILD_TAG = "UI build: 2025-09-02 18:05 • PROD";
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 const CCY_PREFIX = { USD: "$", GBP: "£", EUR: "€", NGN: "₦" };
 
@@ -18,7 +18,37 @@ const SHOW_ADMIN_UI =
     localStorage.getItem("showAdminUI") === "1" ||
     /\badmin=1\b/.test(window.location.search));
 
+const DEBUG =
+  typeof window !== "undefined" &&
+  /(?:[?&])debug=1(?:&|$)/.test(window.location.search);
+
 export default function App() {
+  // One-time minimal CSS (spinner + shimmer) — safe to inject once
+  useEffect(() => {
+    if (document.getElementById("savopay-inline-style")) return;
+    const style = document.createElement("style");
+    style.id = "savopay-inline-style";
+    style.innerHTML = `
+      @keyframes savopay-spin { to { transform: rotate(360deg); } }
+      .spin { animation: savopay-spin 1s linear infinite; }
+      @keyframes savopay-shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+      .shimmer {
+        background: linear-gradient(90deg, rgba(0,0,0,.06) 25%, rgba(0,0,0,.12) 37%, rgba(0,0,0,.06) 63%);
+        background-size: 400% 100%;
+        animation: savopay-shimmer 1.2s ease-in-out infinite;
+        border-radius: 6px;
+      }
+      .skeleton { height: 14px; min-width: 80px; }
+      .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+      .status-ok { background: #16a34a; }
+      .status-err { background: #dc2626; }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
   // Saved prefs
   const [invoiceCurrency, setInvoiceCurrency] = useState(
     () => localStorage.getItem("fiat") || "USD"
@@ -50,26 +80,27 @@ export default function App() {
   );
 
   // Presets
+  const DEFAULT_AMTS = ["5.00", "10.00", "20.00", "50.00"];
+  const DEFAULT_TIPS = [0, 10, 15, 20];
+
   const [quickAmts, setQuickAmts] = useState(() => {
     const raw = localStorage.getItem("quickAmts");
-    if (!raw) return ["5.00", "10.00", "20.00", "50.00"];
+    if (!raw) return DEFAULT_AMTS;
     try {
       const arr = JSON.parse(raw);
-      return Array.isArray(arr) && arr.length
-        ? arr
-        : ["5.00", "10.00", "20.00", "50.00"];
+      return Array.isArray(arr) && arr.length ? arr : DEFAULT_AMTS;
     } catch {
-      return ["5.00", "10.00", "20.00", "50.00"];
+      return DEFAULT_AMTS;
     }
   });
   const [tipPresets, setTipPresets] = useState(() => {
     const raw = localStorage.getItem("tipPresets");
-    if (!raw) return [0, 10, 15, 20];
+    if (!raw) return DEFAULT_TIPS;
     try {
       const arr = JSON.parse(raw);
-      return Array.isArray(arr) && arr.length ? arr : [0, 10, 15, 20];
+      return Array.isArray(arr) && arr.length ? arr : DEFAULT_TIPS;
     } catch {
-      return [0, 10, 15, 20];
+      return DEFAULT_TIPS;
     }
   });
 
@@ -125,12 +156,16 @@ export default function App() {
   const [payerId, setPayerId] = useState("walk-in");
   const [customerEmail, setCustomerEmail] = useState("");
 
+  // Derived amounts + validation
   const base = safeNum(amount);
   const usingFixed = tipMode === "amount" && safeNum(tipFixed) > 0;
-  const tipAmount = usingFixed
-    ? round2(safeNum(tipFixed))
-    : round2((base * tipPct) / 100);
+  // Ensure fixed tip is never negative and not NaN
+  const safeFixedTip = Math.max(0, safeNum(tipFixed));
+  const tipAmount = usingFixed ? round2(safeFixedTip) : round2((base * tipPct) / 100);
   const totalAmount = round2(base + tipAmount);
+
+  const isAmountValid = base >= 0.01; // require meaningful base amount
+  const canSubmit = !(!online || !isAmountValid);
 
   // Start payment
   const [starting, setStarting] = useState(false);
@@ -244,6 +279,14 @@ export default function App() {
     if (IS_PROD) setAdminUnlocked(false);
   }, []);
 
+  // Auto-refresh interval
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const ms = Math.max(2, refreshEverySec) * 1000;
+    const t = setInterval(fetchPayments, ms);
+    return () => clearInterval(t);
+  }, [autoRefresh, refreshEverySec]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e) {
@@ -302,6 +345,11 @@ export default function App() {
   // Charge handler (popup-safe)
   async function handleStartPayment(e) {
     e.preventDefault();
+    if (starting) return; // double-submit guard
+    if (!isAmountValid) {
+      setError("Enter an amount of at least 0.01");
+      return;
+    }
     setError("");
     setStartResult(null);
     setStarting(true);
@@ -347,10 +395,11 @@ export default function App() {
           (json && (json.error || json.detail)) || `HTTP ${resp.status}`
         );
 
+      if (DEBUG) console.log("start-payment response:", json);
       setStartResult(json);
       fetchPayments();
 
-      // Note: ForumPay currently not returning access_url; guard this.
+      // Normalize possible URL fields
       const access_url =
         json?.access_url ||
         json?.checkout_url ||
@@ -383,7 +432,8 @@ export default function App() {
         if (checkoutWin && !checkoutWin.closed) checkoutWin.close();
       } catch {}
     } finally {
-      setStarting(false);
+      // micro-debounce in case of extremely fast loop
+      setTimeout(() => setStarting(false), 250);
     }
   }
 
@@ -472,6 +522,15 @@ export default function App() {
       startResult?.accessUrl ||
       null;
     if (url) window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function copyPayload() {
+    try {
+      const s = JSON.stringify(startResult || {}, null, 2);
+      copyToClipboard(s);
+    } catch {
+      alert("Nothing to copy.");
+    }
   }
 
   function openLastConfirmedReceipt() {
@@ -617,18 +676,13 @@ export default function App() {
     }
   }
 
-  // Auto-refresh interval (after render so helpers exist)
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const ms = Math.max(2, refreshEverySec) * 1000;
-    const t = setInterval(fetchPayments, ms);
-    return () => clearInterval(t);
-  }, [autoRefresh, refreshEverySec]);
+  // Header badge for current crypto/network
+  const cryptoBadge = `${cryptoCurrency}${cryptoCurrency === "USDT" ? ` • ${network}` : ""}`;
 
   return (
     <div ref={appRef} className="app-shell">
       {!online && (
-        <div className="toast">
+        <div className="toast" role="status" aria-live="polite">
           You’re offline. New charges are disabled until connection is restored.
         </div>
       )}
@@ -640,12 +694,32 @@ export default function App() {
           </h1>
           <div className="hint">{BUILD_TAG}</div>
         </div>
+
         <div className="input-group" style={{ flexWrap: "wrap" }}>
-          <div className="status-pill">
+          <div className="status-pill" aria-label={online ? "Online" : "Offline"}>
             <span className={`status-dot ${online ? "status-ok" : "status-err"}`} />
             {online ? "Online" : "Offline"} •{" "}
             {lastSync ? `Last sync: ${lastSync.toLocaleTimeString()}` : "Last sync: —"}
+            {autoRefresh && (
+              <span
+                className="spin"
+                aria-hidden="true"
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 999,
+                  border: "2px solid #9ca3af",
+                  borderTopColor: "#111",
+                  display: "inline-block",
+                  marginLeft: 8,
+                }}
+                title="Auto-refreshing"
+              />
+            )}
           </div>
+
+          <span className="badge" title="Current crypto & network">{cryptoBadge}</span>
+
           <div className="badge">
             Auto-refresh
             <label className="input-group" style={{ marginLeft: 6 }}>
@@ -653,6 +727,7 @@ export default function App() {
                 type="checkbox"
                 checked={autoRefresh}
                 onChange={(e) => setAutoRefresh(e.target.checked)}
+                aria-label="Toggle auto refresh"
               />
               {autoRefresh ? "On" : "Off"}
             </label>
@@ -664,6 +739,7 @@ export default function App() {
               className="select"
               disabled={!autoRefresh}
               style={{ width: 96 }}
+              aria-label="Auto refresh interval"
             >
               {[3, 5, 10, 30, 60].map((s) => (
                 <option key={s} value={s}>
@@ -672,25 +748,27 @@ export default function App() {
               ))}
             </select>
           </div>
-          <button className="btn btn-ghost" onClick={() => setBeepOn((b) => !b)}>
+
+          <button className="btn btn-ghost" onClick={() => setBeepOn((b) => !b)} aria-label="Toggle sound">
             {beepOn ? "Sound: On" : "Sound: Off"}
           </button>
           <button
             className="btn btn-ghost"
             onClick={() => setAutoOpenCheckout((v) => !v)}
+            aria-label="Toggle auto open checkout"
           >
             {autoOpenCheckout ? "Auto-open: On" : "Auto-open: Off"}
           </button>
-          <button className="btn btn-ghost" onClick={requestNotify}>
+          <button className="btn btn-ghost" onClick={requestNotify} aria-label="Enable alerts">
             Enable alerts
           </button>
-          <button className="btn btn-ghost" onClick={toggleFullscreen}>
+          <button className="btn btn-ghost" onClick={toggleFullscreen} aria-label="Toggle fullscreen">
             Fullscreen
           </button>
-          <button className="btn btn-ghost" onClick={showShortcuts}>
+          <button className="btn btn-ghost" onClick={showShortcuts} aria-label="Show shortcuts">
             Shortcuts
           </button>
-          <button className="btn btn-ghost" onClick={openLastConfirmedReceipt}>
+          <button className="btn btn-ghost" onClick={openLastConfirmedReceipt} aria-label="Reprint last confirmed">
             Reprint last confirmed
           </button>
           <button
@@ -699,6 +777,7 @@ export default function App() {
               if (!settingsUnlocked) setNeedsPinFor("settings");
               else setShowSettings(true);
             }}
+            aria-label="Open settings"
           >
             Settings
           </button>
@@ -709,6 +788,7 @@ export default function App() {
                 if (!adminUnlocked) setNeedsPinFor("admin");
                 else setShowAdmin((s) => !s);
               }}
+              aria-label="Open admin"
             >
               {showAdmin ? "Close Admin" : "Open Admin"}
             </button>
@@ -755,8 +835,14 @@ export default function App() {
                   min="0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  onBlur={() => setAmount(Number(safeNum(amount)).toFixed(2))}
                   required
+                  aria-invalid={!isAmountValid}
+                  aria-describedby="amountHelp"
                 />
+              </div>
+              <div id="amountHelp" className="hint">
+                Minimum chargeable base amount is 0.01 {invoiceCurrency}.
               </div>
               <div className="row" style={{ marginTop: 8 }}>
                 {quickAmts.map((v) => (
@@ -765,6 +851,7 @@ export default function App() {
                     type="button"
                     className="btn btn-ghost"
                     onClick={() => setAmount(v)}
+                    aria-label={`Set amount ${v}`}
                   >
                     {Number(safeNum(v)).toFixed(2)}
                   </button>
@@ -788,6 +875,7 @@ export default function App() {
                         setTipMode("percent");
                         setTipPct(Number(p) || 0);
                       }}
+                      aria-label={`Tip ${p}%`}
                     >
                       {Number(p)}%
                     </button>
@@ -797,6 +885,7 @@ export default function App() {
                   type="button"
                   className={`btn ${tipMode === "amount" ? "btn-primary" : "btn-ghost"}`}
                   onClick={() => setTipMode("amount")}
+                  aria-label="Tip other amount"
                 >
                   Other
                 </button>
@@ -807,9 +896,11 @@ export default function App() {
                     min="0"
                     value={tipFixed}
                     onChange={(e) => setTipFixed(e.target.value)}
+                    onBlur={() => setTipFixed(Number(safeNum(tipFixed)).toFixed(2))}
                     placeholder="Enter tip amount"
                     className="input"
                     style={{ maxWidth: 200 }}
+                    aria-label="Fixed tip amount"
                   />
                 )}
               </div>
@@ -836,6 +927,7 @@ export default function App() {
                 className="select"
                 value={invoiceCurrency}
                 onChange={(e) => setInvoiceCurrency(e.target.value)}
+                aria-label="Select fiat currency"
               >
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
@@ -850,6 +942,7 @@ export default function App() {
                 className="select"
                 value={cryptoCurrency}
                 onChange={(e) => setCryptoCurrency(e.target.value)}
+                aria-label="Select crypto"
               >
                 <option value="USDT">USDT</option>
               </select>
@@ -860,6 +953,7 @@ export default function App() {
                     type="button"
                     className={`btn ${network === "ERC20" ? "btn-primary" : "btn-ghost"}`}
                     onClick={() => setNetwork("ERC20")}
+                    aria-label="Set network ERC20"
                   >
                     Network: ERC20
                   </button>
@@ -867,6 +961,7 @@ export default function App() {
                     type="button"
                     className={`btn ${network === "TRON" ? "btn-primary" : "btn-ghost"}`}
                     onClick={() => setNetwork("TRON")}
+                    aria-label="Set network TRON"
                   >
                     Network: TRON
                   </button>
@@ -882,6 +977,7 @@ export default function App() {
                 value={payerId}
                 onChange={(e) => setPayerId(e.target.value)}
                 placeholder="walk-in"
+                aria-label="Payer ID"
               />
             </div>
           </div>
@@ -895,6 +991,7 @@ export default function App() {
                 value={cashier}
                 onChange={(e) => setCashier(e.target.value)}
                 placeholder="Cashier"
+                aria-label="Cashier name"
               />
             </div>
             <div>
@@ -905,14 +1002,22 @@ export default function App() {
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 placeholder="you@example.com"
+                aria-label="Customer email"
               />
             </div>
           </div>
 
           <div className="input-group" style={{ flexWrap: "wrap" }}>
-            <button type="submit" className="btn btn-primary" disabled={starting || !online}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={starting || !canSubmit}
+              aria-label="Create charge"
+              title={!isAmountValid ? "Enter at least 0.01" : "Create charge"}
+            >
               {starting ? "Creating..." : `Charge ${fmt(totalAmount, invoiceCurrency)}`}
             </button>
+
             {/* Only show these if we have a real URL */}
             {(() => {
               const url =
@@ -924,35 +1029,33 @@ export default function App() {
                 null;
               return url ? (
                 <>
-                  <button type="button" className="btn btn-outline" onClick={openCheckout}>
+                  <button type="button" className="btn btn-outline" onClick={openCheckout} aria-label="Open checkout">
                     Open checkout
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost"
                     onClick={() => copyToClipboard(url)}
+                    aria-label="Copy checkout link"
                   >
                     Copy checkout link
                   </button>
                 </>
               ) : null;
             })()}
-            <button type="button" className="btn btn-ghost" onClick={resetForm}>
+
+            <button type="button" className="btn btn-ghost" onClick={resetForm} aria-label="New sale">
               New sale
             </button>
           </div>
 
-          {error && <div className="error">⚠️ {error}</div>}
+          {error && <div className="error" role="alert">⚠️ {error}</div>}
 
           {startResult && (
             <div className="card" style={{ marginTop: 12 }}>
               <div className="card-body">
-                <div>
-                  <b>Payment ID:</b> {startResult.payment_id || "—"}
-                </div>
-                <div>
-                  <b>Network:</b> {network}
-                </div>
+                <div><b>Payment ID:</b> {startResult.payment_id || "—"}</div>
+                <div><b>Network:</b> {network}</div>
                 {(() => {
                   const url =
                     startResult?.access_url ||
@@ -965,9 +1068,7 @@ export default function App() {
                     <div className="input-group" style={{ flexWrap: "wrap", marginTop: 8 }}>
                       <div>
                         <b>Checkout URL:</b>{" "}
-                        <a href={url} target="_blank" rel="noreferrer">
-                          {url}
-                        </a>
+                        <a href={url} target="_blank" rel="noreferrer">{url}</a>
                       </div>
                     </div>
                   ) : (
@@ -976,6 +1077,19 @@ export default function App() {
                     </div>
                   );
                 })()}
+                <div className="input-group" style={{ flexWrap: "wrap", marginTop: 8 }}>
+                  <button type="button" className="btn btn-ghost" onClick={copyPayload} aria-label="Copy payload">
+                    Copy payload
+                  </button>
+                  {DEBUG && (
+                    <details style={{ marginTop: 6 }}>
+                      <summary>Response keys (debug)</summary>
+                      <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", fontSize: 12 }}>
+                        {Object.keys(startResult || {}).join(", ")}
+                      </pre>
+                    </details>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -992,6 +1106,7 @@ export default function App() {
                 onClick={fetchPayments}
                 className="btn btn-ghost"
                 disabled={loadingPayments}
+                aria-label="Refresh payments"
               >
                 {loadingPayments ? "Refreshing..." : "Refresh"}
               </button>
@@ -1003,7 +1118,7 @@ export default function App() {
                 Totals (confirmed):{" "}
                 <b style={{ marginLeft: 6 }}>{formatTotals(confirmedTotals)}</b>
               </span>
-              <button onClick={exportFilteredCsv} className="btn btn-outline">
+              <button onClick={exportFilteredCsv} className="btn btn-outline" aria-label="Export filtered CSV">
                 Export filtered CSV
               </button>
             </div>
@@ -1022,6 +1137,7 @@ export default function App() {
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="select"
+                aria-label="Filter by status"
               >
                 <option value="all">All</option>
                 <option value="created">Created</option>
@@ -1037,6 +1153,7 @@ export default function App() {
                 value={filterCashier}
                 onChange={(e) => setFilterCashier(e.target.value)}
                 className="select"
+                aria-label="Filter by cashier"
               >
                 <option value="all">All</option>
                 {cashierOptions.map((c) => (
@@ -1052,6 +1169,7 @@ export default function App() {
                   checked={onlyToday}
                   onChange={(e) => setOnlyToday(e.target.checked)}
                   style={{ marginRight: 6 }}
+                  aria-label="Today only"
                 />
                 Today only
               </label>
@@ -1068,12 +1186,13 @@ export default function App() {
                 placeholder="payment id, order id, email, cashier…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                aria-label="Search payments"
               />
             </div>
           </div>
 
           <div style={{ overflowX: "auto", marginTop: 12 }}>
-            <table className="table">
+            <table className="table" aria-busy={loadingPayments}>
               <thead>
                 <tr>
                   <th>Created</th>
@@ -1088,154 +1207,172 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {filteredPayments.length === 0 && (
+                {loadingPayments && (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={`sk${i}`}>
+                      {Array.from({ length: 9 }).map((__, j) => (
+                        <td key={`sk${i}-${j}`}><div className="shimmer skeleton" /></td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+                {!loadingPayments && filteredPayments.length === 0 && (
                   <tr>
                     <td colSpan={9} style={{ textAlign: "center", color: "var(--text-dim)" }}>
                       No matching payments.
                     </td>
                   </tr>
                 )}
-                {filteredPayments.map((row) => {
-                  const state = String(row.state || row.status || "").toLowerCase();
-                  const isConfirmed = state === "confirmed";
-                  const tipText = fixed2(row.meta_tip_amount)
-                    ? `${fixed2(row.meta_tip_amount)} ${row.invoice_currency}${
-                        row.meta_tip_percent != null
-                          ? ` (${row.meta_tip_percent}%)`
-                          : row.meta_tip_mode
-                          ? ` (${row.meta_tip_mode})`
-                          : ""
-                      }`
-                    : "—";
+                {!loadingPayments &&
+                  filteredPayments.map((row) => {
+                    const state = String(row.state || row.status || "").toLowerCase();
+                    const isConfirmed = state === "confirmed";
+                    const tipText = fixed2(row.meta_tip_amount)
+                      ? `${fixed2(row.meta_tip_amount)} ${row.invoice_currency}${
+                          row.meta_tip_percent != null
+                            ? ` (${row.meta_tip_percent}%)`
+                            : row.meta_tip_mode
+                            ? ` (${row.meta_tip_mode})`
+                            : ""
+                        }`
+                      : "—";
 
-                  return (
-                    <React.Fragment
-                      key={row.payment_id || row.created_at || Math.random()}
-                    >
-                      <tr>
-                        <td>{row.created_at || "—"}</td>
-                        <td>{row.order_id || "—"}</td>
-                        <td>
-                          {row.invoice_amount
-                            ? `${row.invoice_amount} ${row.invoice_currency}`
-                            : "—"}
-                        </td>
-                        <td>
-                          {row.crypto_amount
-                            ? `${row.crypto_amount} ${row.currency}`
-                            : "—"}
-                        </td>
-                        <td>
-                          <StatusPill status={row.state || row.status || "—"} />
-                        </td>
-                        <td>{row.meta_cashier || "—"}</td>
-                        <td>{tipText}</td>
-                        <td>{row.customer_email || "—"}</td>
-                        <td>
-                          <div className="input-group" style={{ flexWrap: "wrap" }}>
-                            <button
-                              onClick={() => openEmailForm(row)}
-                              disabled={!row?.payment_id || !isConfirmed}
-                              title={
-                                !row?.payment_id
-                                  ? "Unavailable"
-                                  : !isConfirmed
-                                  ? "Available after confirmation"
-                                  : "Send receipt"
-                              }
-                              className="btn btn-ghost"
-                              data-testid="email-btn"
-                            >
-                              Email
-                            </button>
-                            {row?.payment_id && (
-                              <a
-                                href={`${API_BASE}/receipt/${encodeURIComponent(
-                                  row.payment_id
-                                )}/print`}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                                className="btn btn-outline"
-                              >
-                                Print
-                              </a>
-                            )}
-                            <button
-                              onClick={() => recheck(row.payment_id)}
-                              disabled={!row?.payment_id}
-                              className="btn btn-ghost"
-                              title="Re-check status with ForumPay"
-                              data-testid="recheck-btn"
-                            >
-                              Re-check
-                            </button>
-                            {row?.payment_id && (
+                    return (
+                      <React.Fragment
+                        key={row.payment_id || row.created_at || Math.random()}
+                      >
+                        <tr>
+                          <td>{row.created_at || "—"}</td>
+                          <td>{row.order_id || "—"}</td>
+                          <td>
+                            {row.invoice_amount
+                              ? `${row.invoice_amount} ${row.invoice_currency}`
+                              : "—"}
+                          </td>
+                          <td>
+                            {row.crypto_amount
+                              ? `${row.crypto_amount} ${row.currency}`
+                              : "—"}
+                          </td>
+                          <td>
+                            <StatusPill status={row.state || row.status || "—"} />
+                          </td>
+                          <td>{row.meta_cashier || "—"}</td>
+                          <td>{tipText}</td>
+                          <td>{row.customer_email || "—"}</td>
+                          <td>
+                            <div className="input-group" style={{ flexWrap: "wrap" }}>
                               <button
-                                type="button"
-                                onClick={() =>
-                                  copyToClipboard(
-                                    `${API_BASE}/receipt/${encodeURIComponent(
-                                      row.payment_id
-                                    )}/print`
-                                  )
+                                onClick={() => openEmailForm(row)}
+                                disabled={!row?.payment_id || !isConfirmed}
+                                title={
+                                  !row?.payment_id
+                                    ? "Unavailable"
+                                    : !isConfirmed
+                                    ? "Available after confirmation"
+                                    : "Send receipt"
                                 }
                                 className="btn btn-ghost"
-                                title="Copy receipt link"
+                                data-testid="email-btn"
+                                aria-label="Email receipt"
                               >
-                                Copy receipt
+                                Email
                               </button>
-                            )}
-                            {row?.payment_id && (
+                              {row?.payment_id && (
+                                <a
+                                  href={`${API_BASE}/receipt/${encodeURIComponent(
+                                    row.payment_id
+                                  )}/print`}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="btn btn-outline"
+                                  aria-label="Print receipt"
+                                >
+                                  Print
+                                </a>
+                              )}
                               <button
-                                type="button"
-                                onClick={() => copyToClipboard(row.payment_id)}
+                                onClick={() => recheck(row.payment_id)}
+                                disabled={!row?.payment_id}
                                 className="btn btn-ghost"
-                                title="Copy payment ID"
+                                title="Re-check status with ForumPay"
+                                data-testid="recheck-btn"
+                                aria-label="Re-check status"
                               >
-                                Copy ID
+                                Re-check
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-
-                      {emailTargetId === row.payment_id && (
-                        <tr>
-                          <td colSpan={9}>
-                            <div className="input-group" style={{ flexWrap: "wrap" }}>
-                              <input
-                                className="input"
-                                style={{ maxWidth: 360 }}
-                                type="email"
-                                placeholder="name@example.com"
-                                value={emailAddress}
-                                onChange={(e) => setEmailAddress(e.target.value)}
-                                data-testid="email-input"
-                              />
-                              <button
-                                type="button"
-                                onClick={sendEmail}
-                                disabled={sendingEmail || !emailAddress.trim()}
-                                className="btn btn-primary"
-                                data-testid="email-send"
-                              >
-                                {sendingEmail ? "Sending..." : "Send"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelEmailForm}
-                                className="btn btn-ghost"
-                                data-testid="email-cancel"
-                              >
-                                Cancel
-                              </button>
+                              {row?.payment_id && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      `${API_BASE}/receipt/${encodeURIComponent(
+                                        row.payment_id
+                                      )}/print`
+                                    )
+                                  }
+                                  className="btn btn-ghost"
+                                  title="Copy receipt link"
+                                  aria-label="Copy receipt link"
+                                >
+                                  Copy receipt
+                                </button>
+                              )}
+                              {row?.payment_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(row.payment_id)}
+                                  className="btn btn-ghost"
+                                  title="Copy payment ID"
+                                  aria-label="Copy payment ID"
+                                >
+                                  Copy ID
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+
+                        {emailTargetId === row.payment_id && (
+                          <tr>
+                            <td colSpan={9}>
+                              <div className="input-group" style={{ flexWrap: "wrap" }}>
+                                <input
+                                  className="input"
+                                  style={{ maxWidth: 360 }}
+                                  type="email"
+                                  placeholder="name@example.com"
+                                  value={emailAddress}
+                                  onChange={(e) => setEmailAddress(e.target.value)}
+                                  data-testid="email-input"
+                                  aria-label="Email address"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={sendEmail}
+                                  disabled={sendingEmail || !emailAddress.trim()}
+                                  className="btn btn-primary"
+                                  data-testid="email-send"
+                                  aria-label="Send email"
+                                >
+                                  {sendingEmail ? "Sending..." : "Send"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEmailForm}
+                                  className="btn btn-ghost"
+                                  data-testid="email-cancel"
+                                  aria-label="Cancel email"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -1248,7 +1385,7 @@ export default function App() {
           <h2>Daily report</h2>
         </div>
         <div className="card-body input-group" style={{ flexWrap: "wrap" }}>
-          <input className="input" type="date" id="reportDate" defaultValue={todayISO()} />
+          <input className="input" type="date" id="reportDate" defaultValue={todayISO()} aria-label="Daily report date" />
           <button
             type="button"
             onClick={() => {
@@ -1256,6 +1393,7 @@ export default function App() {
               window.open(`${API_BASE}/report/daily?date=${d}`, "_blank");
             }}
             className="btn btn-ghost"
+            aria-label="View daily report JSON"
           >
             View JSON
           </button>
@@ -1266,6 +1404,7 @@ export default function App() {
               window.open(`${API_BASE}/report/daily.csv?date=${d}`, "_blank");
             }}
             className="btn btn-outline"
+            aria-label="Download daily report CSV"
           >
             Download CSV
           </button>
@@ -1288,6 +1427,7 @@ export default function App() {
                 type="date"
                 id="rangeStart"
                 defaultValue={monthStartISO()}
+                aria-label="Range start"
               />
             </div>
             <div className="input-group">
@@ -1299,6 +1439,7 @@ export default function App() {
                 type="date"
                 id="rangeEnd"
                 defaultValue={todayISO()}
+                aria-label="Range end"
               />
             </div>
             <button
@@ -1311,6 +1452,7 @@ export default function App() {
                 window.open(`${API_BASE}/report/range?start=${s}&end=${e}`, "_blank");
               }}
               className="btn btn-ghost"
+              aria-label="View range report JSON"
             >
               View JSON
             </button>
@@ -1327,6 +1469,7 @@ export default function App() {
                 );
               }}
               className="btn btn-outline"
+              aria-label="Download range report CSV"
             >
               Download CSV
             </button>
@@ -1372,6 +1515,8 @@ export default function App() {
           setCryptoCurrency={setCryptoCurrency}
           network={network}
           setNetwork={setNetwork}
+          onResetAmts={() => setQuickAmts(DEFAULT_AMTS)}
+          onResetTips={() => setTipPresets(DEFAULT_TIPS)}
         />
       )}
     </div>
@@ -1395,6 +1540,8 @@ function SettingsModal({
   setCryptoCurrency,
   network,
   setNetwork,
+  onResetAmts,
+  onResetTips,
 }) {
   const [amtsText, setAmtsText] = useState(quickAmts.join(", "));
   const [tipsText, setTipsText] = useState(tipPresets.join(", "));
@@ -1451,6 +1598,11 @@ function SettingsModal({
               placeholder="e.g. 5, 10, 20, 50"
             />
             <div className="hint">Comma-separated; shown as quick buttons under Amount.</div>
+            <div style={{ marginTop: 6 }}>
+              <button className="btn btn-ghost" type="button" onClick={() => { onResetAmts?.(); setAmtsText(["5.00","10.00","20.00","50.00"].join(", ")); }}>
+                Reset to defaults
+              </button>
+            </div>
           </div>
 
           <div>
@@ -1464,6 +1616,11 @@ function SettingsModal({
               placeholder="e.g. 0, 10, 15, 20"
             />
             <div className="hint">Comma-separated percentages; used for tip buttons.</div>
+            <div style={{ marginTop: 6 }}>
+              <button className="btn btn-ghost" type="button" onClick={() => { onResetTips?.(); setTipsText([0,10,15,20].join(", ")); }}>
+                Reset to defaults
+              </button>
+            </div>
           </div>
 
           <div className="row cols-3">
