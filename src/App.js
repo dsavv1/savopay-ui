@@ -212,6 +212,8 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [filterStatus, tipPresets]);
 
+  const canCharge = online && !starting && totalAmount > 0.0;
+
   async function handleStartPayment(e) {
     e.preventDefault();
     setError("");
@@ -242,6 +244,9 @@ export default function App() {
       if (!resp.ok) throw new Error((json && (json.error || json.detail)) || `HTTP ${resp.status}`);
 
       setStartResult(json);
+      if (!json?.access_url) {
+        alert("No checkout URL was returned. If this only happens for specific currencies (e.g., NGN), contact ForumPay.");
+      }
       fetchPayments();
     } catch (e) {
       console.error("handleStartPayment error:", e);
@@ -347,6 +352,12 @@ export default function App() {
   s        Toggle Settings
   ⌘/Ctrl+Enter  Charge`
     );
+  }
+
+  function lockAdminNow() {
+    setAdminUnlocked(false);
+    setShowAdmin(false);
+    alert("Admin locked.");
   }
 
   // Derived lists & filters
@@ -520,18 +531,29 @@ export default function App() {
 
           {/* Admin button — hidden in production, enforce non-0000 PIN */}
           {SHOW_ADMIN_ENTRY && (
-            <button
-              style={styles.secondaryBtn}
-              onClick={() => {
-                if (IS_PROD) return; // hard block in prod
-                if (hasDefaultPin()) { setShowPinSetup(true); return; }
-                if (!adminUnlocked) setNeedsPinFor("admin");
-                else setShowAdmin((s) => !s);
-              }}
-              title={IS_PROD ? "Disabled in production" : hasDefaultPin() ? "Set a PIN first" : (showAdmin ? "Close Admin" : "Open Admin")}
-            >
-              {showAdmin ? "Close Admin" : "Open Admin"}
-            </button>
+            <>
+              <button
+                style={styles.secondaryBtn}
+                onClick={() => {
+                  if (IS_PROD) return; // hard block in prod
+                  if (hasDefaultPin()) { setShowPinSetup(true); return; }
+                  if (!adminUnlocked) setNeedsPinFor("admin");
+                  else setShowAdmin((s) => !s);
+                }}
+                title={IS_PROD ? "Disabled in production" : hasDefaultPin() ? "Set a PIN first" : (showAdmin ? "Close Admin" : "Open Admin")}
+              >
+                {showAdmin ? "Close Admin" : "Open Admin"}
+              </button>
+              {adminUnlocked && (
+                <button
+                  style={styles.secondaryBtn}
+                  onClick={lockAdminNow}
+                  title="Lock Admin"
+                >
+                  Lock Admin
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -569,6 +591,11 @@ export default function App() {
                 </button>
               ))}
             </div>
+            {!canCharge && (
+              <div style={{ marginTop: 6, fontSize: 12, color: "#9ca3af" }}>
+                {online ? "Enter an amount above 0." : "You’re offline."}
+              </div>
+            )}
           </div>
         </div>
 
@@ -676,7 +703,7 @@ export default function App() {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="submit" style={styles.primaryBtn} disabled={starting || !online}>
+          <button type="submit" style={styles.primaryBtn} disabled={!canCharge}>
             {starting ? "Creating..." : `Charge ${fmt(totalAmount, invoiceCurrency)}`}
           </button>
 
@@ -695,18 +722,29 @@ export default function App() {
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <div>
                 <b>Checkout URL:</b>{" "}
-                <a href={startResult.access_url} target="_blank" rel="noreferrer">
-                  {startResult.access_url}
-                </a>
+                {startResult.access_url ? (
+                  <a href={startResult.access_url} target="_blank" rel="noreferrer">
+                    {startResult.access_url}
+                  </a>
+                ) : (
+                  <span style={{ color: "#6b7280" }}>—</span>
+                )}
               </div>
-              <button
-                type="button"
-                style={styles.secondaryBtn}
-                onClick={() => copyToClipboard(startResult.access_url)}
-              >
-                Copy checkout link
-              </button>
+              {startResult.access_url && (
+                <button
+                  type="button"
+                  style={styles.secondaryBtn}
+                  onClick={() => copyToClipboard(startResult.access_url)}
+                >
+                  Copy checkout link
+                </button>
+              )}
             </div>
+            {!startResult.access_url && (
+              <div style={{ marginTop: 8, color: "#b91c1c", fontWeight: 600 }}>
+                No checkout URL returned by gateway. Try a different currency or contact support.
+              </div>
+            )}
           </div>
         )}
       </form>
