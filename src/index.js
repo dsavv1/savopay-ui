@@ -1,10 +1,11 @@
-// src/index.js
+import './theme.v2.css?v=build-2025-09-03-01';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
-import './theme.css';
 import App from './App';
-import reportWebVitals from './reportWebVitals';
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+}
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
@@ -12,5 +13,3 @@ root.render(
     <App />
   </React.StrictMode>
 );
-
-reportWebVitals();
