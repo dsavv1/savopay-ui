@@ -4,7 +4,7 @@ import StatusPill from "./components/StatusPill";
 import AdminPanel from "./components/AdminPanel";
 import PinGate from "./components/PinGate";
 
-const BUILD_TAG = "UI build: 2025-08-29 22:20 • PROD";
+const BUILD_TAG = `UI build: ${process.env.REACT_APP_UI_BUILD || "dev"} • PROD`
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 
 // Environment flags for Admin visibility & PIN policy
