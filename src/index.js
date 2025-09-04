@@ -5,6 +5,7 @@ import LoginGate from './components/LoginGate';
 import './theme.v3.css';
 import './styles/overrides.coinbase.css';
 import './polyfills/supported-bridge';
+import './polyfills/pos-patcher';
 (function(){try{var e=document.createElement('style');e.setAttribute('data-id','SVP_STYLE_INJECT_V1');e.appendChild(document.createTextNode(`
 /* SVP_STYLE_INJECT_V1 */
 :root{--bg:#f6f8fc;--card:#fff;--border:#e6e9ef;--text:#0b1f44;--muted:#6b7a90;--error:#b42318;--brand:#1652F0;--brand-dark:#0b3bcf}
