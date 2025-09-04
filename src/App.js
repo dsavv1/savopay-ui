@@ -453,7 +453,7 @@ export default function App() {
 
       <div style={styles.headerRow}>
         <div>
-          <h1 style={styles.h1}>SavoPay POS</h1>
+          <h1 style={styles.h1}>SAVOPAY</h1>
           <div style={{ color: "#6b7280", margin: "0 0 12px 0", fontSize: 12 }}>
             {BUILD_TAG}
             {!IS_PROD && hasDefaultPin() && (
