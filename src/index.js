@@ -4,6 +4,7 @@ import App from './App';
 import LoginGate from './components/LoginGate';
 import './theme.v3.css';
 import './overrides.css';
+if('serviceWorker'in navigator&&!localStorage.getItem('SW_CLEAN')){navigator.serviceWorker.getRegistrations().then(rs=>{rs.forEach(r=>r.unregister());localStorage.setItem('SW_CLEAN','1');});}
 
 try {
   const keys = ['svp_admin_pin','admin_pin','adminPIN','pin'];
