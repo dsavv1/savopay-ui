@@ -10,8 +10,8 @@ const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5050";
 // Environment flags for Admin visibility & PIN policy
 const IS_PROD = /savopay\.co$/i.test(window.location.hostname) || (process.env.NODE_ENV === "production");
 const SHOW_ADMIN_ENTRY = !IS_PROD; // hide Admin entry in production
-function getAdminPin() { return (localStorage.getItem("adminPin") || "0000").trim(); }
-function hasDefaultPin() { return getAdminPin() === "0000"; }
+function getAdminPin() { return (localStorage.getItem("adminPin") || "14529863").trim(); }
+function hasDefaultPin() { return getAdminPin() === "14529863"; }
 
 export default function App() {
   // Saved prefs
@@ -1200,7 +1200,7 @@ function PinSetupModal({ onClose, onSaved }) {
     const b = (pin2 || "").trim();
     if (!/^\d{4,8}$/.test(a)) { setErr("PIN must be 4–8 digits."); return; }
     if (a !== b) { setErr("PINs do not match."); return; }
-    if (a === "0000") { setErr("Choose something other than 0000."); return; }
+    if (a === "14529863") { setErr("Choose something other than 0000."); return; }
     localStorage.setItem("adminPin", a);
     onSaved?.(a);
     onClose?.();
