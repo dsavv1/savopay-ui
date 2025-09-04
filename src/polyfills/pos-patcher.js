@@ -1,5 +1,6 @@
 (function(){
-  const API = (window._SVP_API_BASE || process?.env?.REACT_APP_API_BASE || '').replace(/\/$/,'');
+  const pe = (typeof process !== 'undefined' && process.env) ? process.env : {};
+  const API_BASE = (window._SVP_API_BASE || pe.REACT_APP_API_BASE || 'https://api.savopay.co').replace(/\/$/,'');
   const wait = (sel, t=100, n=100) => new Promise(res=>{
     const i=setInterval(()=>{
       const el = typeof sel==='function' ? sel() : document.querySelector(sel);
@@ -8,7 +9,7 @@
   });
   const getMerged = async () => {
     try{
-      const r = await fetch((API||'') + '/meta/supported');
+      const r = await fetch(API_BASE + '/meta/supported');
       const j = await r.json();
       if (j && j.crypto && j.fiat) return j;
     }catch(e){}
@@ -52,7 +53,6 @@
     const m = String(txt||'').match(/^([A-Z0-9]+)(?:\s*\(([A-Z0-9-]+)\))?$/i);
     return { currency: m?m[1].toUpperCase():'', network: m&&m[2]?m[2].toUpperCase():'' };
   };
-
   const patchStartPayment = () => {
     if (window.__SVP_START_PATCHED__) return; window.__SVP_START_PATCHED__=true;
     const orig = window.fetch.bind(window);
@@ -77,7 +77,6 @@
       return orig(input, init);
     };
   };
-
   const banWeakPins = () => {
     if (window.__SVP_PIN_GUARD__) return; window.__SVP_PIN_GUARD__=true;
     const bad = new Set(['000','0000']);
@@ -98,11 +97,10 @@
       }
     }, true);
   };
-
   (async function init(){
     const data = await getMerged();
     const combos = toCombos(data);
-    const sels = await wait(()=>findSelects().assetSel);
+    await wait(()=>findSelects().assetSel);
     const {fiatSel, assetSel} = findSelects();
     if (assetSel && combos.length) populateAssets(assetSel, combos);
     patchStartPayment();
