@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import LoginGate from './components/LoginGate';
 import './theme.v3.css';
-import './overrides.css';
 import './styles/overrides.coinbase.css';
 if('serviceWorker'in navigator&&!localStorage.getItem('SW_CLEAN')){navigator.serviceWorker.getRegistrations().then(rs=>{rs.forEach(r=>r.unregister());localStorage.setItem('SW_CLEAN','1');});}
 
