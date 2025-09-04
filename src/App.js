@@ -14,10 +14,40 @@ function StatusPill({ status }) {
 }
 
 export default function App() {
+  const [amount, setAmount] = useState('');
+  const [fiat, setFiat] = useState('USD');
+  const [asset, setAsset] = useState('USDT');
+  const [network, setNetwork] = useState('TRON');
+  const [supported, setSupported] = useState({ fiat: ['USD','NGN','GBP','EUR'], crypto: [{symbol:'USDT', networks:['TRON','ERC20','BEP20']}, {symbol:'BTC', networks:['BTC']}] });
+
   const [payments, setPayments] = useState([]);
   const [filter, setFilter] = useState('today');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/meta/supported`);
+        if (r.ok) {
+          const d = await r.json();
+          const fiats = d?.fiat || d?.fiats || supported.fiat;
+          const cryptos = (d?.crypto || d?.assets || []).map(a => ({
+            symbol: a.symbol || a.currency || a.code || 'USDT',
+            networks: a.networks || a.chains || ['TRON','ERC20']
+          }));
+          if (fiats?.length) setFiat(fiats.includes('USD') ? 'USD' : fiats[0]);
+          if (cryptos?.length) {
+            setAsset(cryptos[0].symbol);
+            setNetwork((cryptos[0].networks || [])[0] || 'TRON');
+          }
+          if (fiats?.length || cryptos?.length) setSupported({ fiat: fiats?.length ? fiats : supported.fiat, crypto: cryptos?.length ? cryptos : supported.crypto });
+        }
+      } catch (_) {}
+    })();
+    // eslint-disable-next-line
+  }, []);
 
   const fetchPayments = async () => {
     const q = new URLSearchParams();
@@ -49,6 +79,44 @@ export default function App() {
     created: p.created_at || p.created || ''
   })), [payments]);
 
+  const networksForAsset = useMemo(() => {
+    const found = supported.crypto.find(c => c.symbol === asset);
+    return found?.networks || ['TRON','ERC20'];
+  }, [supported, asset]);
+
+  useEffect(() => {
+    if (!networksForAsset.includes(network)) setNetwork(networksForAsset[0]);
+  }, [networksForAsset, network]);
+
+  const charge = async () => {
+    setErr(''); setMsg('');
+    const amt = Number(amount);
+    if (!amt || amt <= 0) { setErr('Enter an amount'); return; }
+    try {
+      const payload = {
+        invoice_amount: amt,
+        invoice_currency: fiat,
+        currency: asset,
+        network
+      };
+      const r = await fetch(`${API}/start-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json().catch(()=> ({}));
+      if (!r.ok) throw new Error(d?.err || 'Failed to start payment');
+      const openUrl = d.checkout_url || d.payment_url || d.url || d?.data?.url;
+      if (openUrl) window.open(openUrl, '_blank', 'noopener');
+      setMsg('Checkout opened');
+      setAmount('');
+    } catch (e) {
+      setErr(e.message || 'Error starting payment');
+    }
+  };
+
+  const quick = (v) => setAmount(String((Number(amount)||0) + v));
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -56,13 +124,38 @@ export default function App() {
         <div className="build">{`UI build: ${BUILD_TAG}`}</div>
       </header>
 
+      <section className="card" style={{marginBottom:12}}>
+        <div style={{display:'grid', gap:8, gridTemplateColumns:'1fr 140px 140px 160px 120px'}}>
+          <input type="number" placeholder="Amount" value={amount} onChange={e=>setAmount(e.target.value)} />
+          <select value={fiat} onChange={e=>setFiat(e.target.value)}>
+            {supported.fiat.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <select value={asset} onChange={e=>setAsset(e.target.value)}>
+            {supported.crypto.map(c => <option key={c.symbol} value={c.symbol}>{c.symbol}</option>)}
+          </select>
+          <select value={network} onChange={e=>setNetwork(e.target.value)}>
+            {networksForAsset.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <button onClick={charge}>Charge</button>
+        </div>
+        <div style={{display:'flex', gap:8, marginTop:8}}>
+          <button onClick={()=>quick(5)}>+5</button>
+          <button onClick={()=>quick(10)}>+10</button>
+          <button onClick={()=>quick(20)}>+20</button>
+          <button onClick={()=>quick(50)}>+50</button>
+          <button onClick={()=>setAmount('')}>Clear</button>
+          {msg && <span className="muted">{msg}</span>}
+          {err && <span className="error">{err}</span>}
+        </div>
+      </section>
+
       <section className="toolbar">
         <div className="left">
           <select value={filter} onChange={e => setFilter(e.target.value)}>
             <option value="today">Today</option>
             <option value="all">All</option>
           </select>
-          <button onClick={() => window.location.reload()}>Refresh</button>
+          <button onClick={()=>window.location.reload()}>Refresh</button>
         </div>
         <div className="right">
           {loading ? <span className="muted">Loading…</span> : err ? <span className="error">{err}</span> : <span className="muted">Auto-refreshing</span>}
