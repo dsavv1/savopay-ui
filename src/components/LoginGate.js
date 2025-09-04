@@ -1,4 +1,3 @@
-cat > src/components/LoginGate.js <<'JS'
 import { useEffect, useState } from 'react';
 export default function LoginGate({ children }) {
   const [u,setU]=useState(()=>{try{return JSON.parse(localStorage.getItem('svp_user')||'null')}catch{return null}});
@@ -18,14 +17,3 @@ export default function LoginGate({ children }) {
     </div>
   );
 }
-JS
-
-cat > src/index.js <<'JS'
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import LoginGate from './components/LoginGate';
-import './theme.v3.css';
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<React.StrictMode><LoginGate><App/></LoginGate></React.StrictMode>);
-JS
