@@ -9,7 +9,7 @@ export default function PinGate({ onUnlock, onClose }) {
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   function checkPin() {
-    const saved = localStorage.getItem("adminPin") || "0000";
+    const saved = localStorage.getItem("adminPin") || "14529863";
     if (pin === saved) {
       setError("");
       onUnlock?.();
