@@ -1,22 +1,22 @@
 :root{--bg:#f7f8fb;--card:#ffffff;--border:#e5e7eb;--text:#0f172a;--muted:#667085;--error:#b42318}
-*{box-sizing:border-box}html,body,#root{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-.app-shell{max-width:1100px;margin:0 auto;padding:24px}
-.app-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-.app-header h1{font-weight:700;font-size:20px;margin:0}
-.build{color:var(--muted);font-size:12px}
-.toolbar{display:flex;justify-content:space-between;align-items:center;margin:12px 0 16px;gap:12px}
-.toolbar .left{display:flex;gap:8px;align-items:center}
-.toolbar .right .muted{color:var(--muted);font-size:12px}
-.toolbar .right .error{color:var(--error);font-size:12px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px}
-.table{width:100%}
-.thead,.tr{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr;align-items:center}
-.thead{font-size:12px;color:#475467;font-weight:600;text-transform:uppercase;letter-spacing:.02em;padding:8px 12px}
-.tbody .tr{padding:10px 12px;border-top:1px solid #f2f4f7}
-.tbody .tr.empty{color:var(--muted);text-align:center;grid-column:1/-1}
-.cell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px}
-button,select,input{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#fff}
-button{cursor:pointer}
-input[type="text"],input[type="number"]{width:100%}
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{margin:0 !important;background:var(--bg) !important;color:var(--text) !important;font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial !important}
+h1,h2,h3,h4,h5,p,div,span,button,select,input,table,th,td{color:inherit !important}
+button,select,input{padding:8px 12px !important;border-radius:10px !important;border:1px solid var(--border) !important;background:#fff !important}
+.app-shell{max-width:1100px !important;margin:0 auto !important;padding:24px !important}
+.app-header{display:flex !important;justify-content:space-between !important;align-items:center !important;margin-bottom:16px !important}
+.app-header h1{font-weight:700 !important;font-size:20px !important;margin:0 !important}
+.build{color:var(--muted) !important;font-size:12px !important}
+.toolbar{display:flex !important;justify-content:space-between !important;align-items:center !important;margin:12px 0 16px !important;gap:12px !important}
+.toolbar .left{display:flex !important;gap:8px !important;align-items:center !important}
+.toolbar .right .muted{color:var(--muted) !important;font-size:12px !important}
+.toolbar .right .error{color:var(--error) !important;font-size:12px !important}
+.card{background:var(--card) !important;border:1px solid var(--border) !important;border-radius:14px !important;padding:12px !important}
+.table{width:100% !important}
+.thead,.tr{display:grid !important;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr !important;align-items:center !important}
+.thead{font-size:12px !important;color:#475467 !important;font-weight:600 !important;text-transform:uppercase !important;letter-spacing:.02em !important;padding:8px 12px !important}
+.tbody .tr{padding:10px 12px !important;border-top:1px solid #f2f4f7 !important}
+.tbody .tr.empty{color:var(--muted) !important;text-align:center !important;grid-column:1/-1 !important}
+.cell{overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace !important;font-size:12px !important}
