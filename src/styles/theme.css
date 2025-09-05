@@ -1,0 +1,6 @@
+:root{--bg:#f6f8fc;--card:#fff;--border:#e6e9ef;--text:#0b1f44;--muted:#6b7a90;--error:#b42318;--brand:#1652F0;--brand-dark:#0b3bcf}
+html,body,#root{height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:0}
+.app-header h1{color:var(--brand-dark)}
+button.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+button,select,input{font-size:13px;padding:6px 10px;border-radius:10px;border:1px solid var(--border);background:#fff}
