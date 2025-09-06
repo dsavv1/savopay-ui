@@ -1,3 +1,4 @@
+(()=>{var U=window.URL;function S(u,b){try{return b?new U(u,b):new U(u,window.location.href)}catch(e){return new U(String(u||''),window.location.href)}}S.prototype=U.prototype;S.createObjectURL=U.createObjectURL.bind(U);S.revokeObjectURL=U.revokeObjectURL.bind(U);window.URL=S;})();
 import { API_BASE } from './config';
 (function(){
   if (window.__SVP_API_BRIDGE__) return; window.__SVP_API_BRIDGE__=true;
